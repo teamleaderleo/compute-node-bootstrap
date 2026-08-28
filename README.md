@@ -19,10 +19,11 @@ The physical part is intentionally short:
 4. Try Ubuntu and check the hardware.
 5. Erase Windows and install Ubuntu.
 6. Get the machine online.
-7. Copy one command block from the Markdown guide to enable SSH and print the machine details needed for handoff.
-8. Let the remote operator finish the technical setup.
+7. Copy the inline Markdown blocks that install OpenSSH + Tailscale and enable Tailscale SSH.
+8. Send the Tailscale authentication URL to the remote operator.
+9. Once remote SSH works, let the operator finish everything else.
 
-If anything materially differs from the guide, **stop, take a photo, and call**. There is no prize for improvising in firmware or disk-management screens.
+If anything materially differs from the guide, **stop, take a photo, and call** rather than improvising in firmware or disk-management screens.
 
 ## Why Ubuntu 26.04?
 
@@ -34,17 +35,24 @@ GitHub also provides an `ubuntu-26.04` hosted runner image (currently preview as
 
 The person physically installing the machine should never have to download, inspect, or invoke one of this repository's helper scripts.
 
-Every command required from them appears directly in the machine's Markdown installation guide in a fenced code block with GitHub's normal **Copy** button. The current handoff block is:
+Every command required from them appears directly in the machine's Markdown installation guide in fenced code blocks with GitHub's normal **Copy** button.
+
+The preferred remote handoff uses **Tailscale SSH**. It avoids router port forwarding, public SSH exposure, dynamic DNS, and manually installing the operator's SSH public key. Ordinary OpenSSH is installed at the same time as a fallback.
+
+With Tailscale SSH, the physical helper only needs to:
+
+1. paste the install block;
+2. paste `sudo tailscale up --ssh --hostname=redmi-01`;
+3. send the printed Tailscale login URL to the operator;
+4. send the final status block output.
+
+The remote operator authenticates the node into the tailnet from their own device and then tests:
 
 ```bash
-sudo apt update
-sudo apt install -y openssh-server
-sudo systemctl enable --now ssh
-printf '\nComputer name: '; hostname
-printf 'Local IP address(es): '; hostname -I
+ssh UBUNTU_USERNAME@redmi-01
 ```
 
-The [`scripts/`](scripts/) directory is only for the remote operator after handoff. It can contain repeatable automation without complicating the physical-install instructions.
+The [`scripts/`](scripts/) directory is only for the remote operator after handoff.
 
 See [remote access](docs/REMOTE_ACCESS.md) and [CI-node notes](docs/CI_NODE.md) after the first boot.
 
@@ -56,7 +64,7 @@ This repository optimizes for a remote video call with a competent person who si
 - keeps every physical-install command directly in the Markdown guide;
 - uses screenshots only where a wrong click would be expensive or confusing;
 - links back to canonical upstream documentation;
-- separates physical setup from later remote administration;
+- gets remote control working as early as possible after the OS install;
 - treats unexpected screens as stop conditions.
 
 ## Sources and licensing
