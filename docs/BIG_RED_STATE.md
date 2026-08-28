@@ -81,3 +81,18 @@ When `big-red` reaches its long-term residential connection:
 6. disable Custom Exit Node once and verify the original OpenClash/Bandwagon route returns.
 
 The machine cannot be reached while it is genuinely powered off. The practical design is therefore to keep it on the OEM charger and prevent sleep. After a shutdown or complete battery drain, the physical fallback is one press of the Power button; services and remote access then start automatically.
+
+
+## Connectivity hardening — 2026-08-28
+
+A later reliability audit found that the Beryl's OpenClash Fake-IP DNS was
+occasionally giving Tailscale synthetic `198.18.0.0/15` destinations that the
+Tailscale daemon could not use. The router now excludes Tailscale domains from
+Fake-IP responses while retaining the existing OpenClash profile and egress.
+
+The host also has server-side SSH keepalives, an enabled graphical-session
+service that starts/restarts the ChatGPT desktop app, and a credential-free
+`big-red-connectivity-check` diagnostic command.
+
+See [Connectivity and Codex Remote runbook](CONNECTIVITY_AND_CODEX_REMOTE.md)
+for the exact change, verification evidence, Mac/phone notes, and rollback.
