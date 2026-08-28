@@ -180,23 +180,36 @@ redmi-01
 
 进入新的 Ubuntu 桌面后先联网。
 
-## 10. 把机器交给远程操作
+## 10. 开启 SSH，完成现场交接
 
-打开 Terminal（`Ctrl` + `Alt` + `T`），执行：
+打开 Terminal（`Ctrl` + `Alt` + `T`），依次运行下面四条命令：
+
+```bash
+sudo apt update
+sudo apt install -y openssh-server
+sudo systemctl enable --now ssh
+hostname -I
+```
+
+最后一条会显示这台机器在局域网里的 IP 地址。同一个网络里的另一台电脑可以先测试：
+
+```bash
+ssh 用户名@局域网IP
+```
+
+这样最基本的现场安装就完成了，而且**不依赖新装的 Ubuntu 此时能否访问 GitHub**。
+
+如果 GitHub 访问正常，可以再运行仓库里的便利脚本，安装其余基础工具并生成硬件报告：
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/teamleaderleo/compute-node-bootstrap/main/scripts/bootstrap-ubuntu.sh
 bash bootstrap-ubuntu.sh
-```
 
-然后：
-
-```bash
 curl -fsSLO https://raw.githubusercontent.com/teamleaderleo/compute-node-bootstrap/main/scripts/host-report.sh
 bash host-report.sh
 ```
 
-第一个脚本会安装并启动 SSH，同时显示局域网 IP。做到这里以后，现场安装工作就完成了；后续远程接入、GitHub Runner、Glaeda 等可以由远程操作方继续配置。
+**局域网 SSH 只是第一步。** 在把机器长期放着无人值守之前，还需要从远程操作方实际所在的网络测试一种稳定的远程接入方式。参见 [`docs/REMOTE_ACCESS.md`](../../docs/REMOTE_ACCESS.md)。
 
 ## 遇到这些情况就停下来确认
 
