@@ -45,7 +45,7 @@ Tailscale SSH itself is off. Tailscale supplies private reachability; the normal
 
 - `ssh`, `tailscaled`, NetworkManager, `networkd-dispatcher` and unattended upgrades start at boot.
 - Tailscale key expiry is disabled for `big-red`.
-- GNOME automatic suspend, ambient brightness and idle dimming are disabled.
+- GNOME automatic suspend and ambient brightness are disabled. Idle dimming is enabled, and the display blanks after 10 minutes of inactivity without locking or suspending the host.
 - systemd sleep, suspend, hibernate and hybrid-sleep targets are masked.
 - Closing the lid does nothing, including on battery.
 - Wi-Fi power saving is disabled.
@@ -96,3 +96,12 @@ service that starts/restarts the ChatGPT desktop app, and a credential-free
 
 See [Connectivity and Codex Remote runbook](CONNECTIVITY_AND_CODEX_REMOTE.md)
 for the exact change, verification evidence, Mac/phone notes, and rollback.
+
+## Display power update — 2026-08-29
+
+The internal display now dims when idle and blanks after 10 minutes. Local input wakes it immediately. This does not stop ChatGPT, SSH, Tailscale, builds, or other background work; automatic suspend and screen locking remain disabled. To restore the previous never-blank behavior:
+
+```bash
+gsettings set org.gnome.settings-daemon.plugins.power idle-dim false
+gsettings set org.gnome.desktop.session idle-delay 'uint32 0'
+```
