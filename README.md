@@ -19,8 +19,8 @@ The physical part is intentionally short:
 4. Try Ubuntu and check the hardware.
 5. Erase Windows and install Ubuntu.
 6. Get the machine online.
-7. Enable SSH with four standard Ubuntu commands.
-8. Test a durable remote-access path, then let the remote operator finish setup.
+7. Copy one command block from the Markdown guide to enable SSH and print the machine details needed for handoff.
+8. Let the remote operator finish the technical setup.
 
 If anything materially differs from the guide, **stop, take a photo, and call**. There is no prize for improvising in firmware or disk-management screens.
 
@@ -30,18 +30,21 @@ Ubuntu 26.04 is the current LTS and ships a newer kernel for recent Intel hardwa
 
 GitHub also provides an `ubuntu-26.04` hosted runner image (currently preview as of August 2026), so 26.04 is already useful as a CI target.
 
-## Minimum post-install handoff
+## Family-facing rule: everything is inline
 
-The family-facing guide does **not** depend on GitHub/raw GitHub being reachable. On the fresh Ubuntu installation, the minimum handoff is:
+The person physically installing the machine should never have to download, inspect, or invoke one of this repository's helper scripts.
+
+Every command required from them appears directly in the machine's Markdown installation guide in a fenced code block with GitHub's normal **Copy** button. The current handoff block is:
 
 ```bash
 sudo apt update
 sudo apt install -y openssh-server
 sudo systemctl enable --now ssh
-hostname -I
+printf '\nComputer name: '; hostname
+printf 'Local IP address(es): '; hostname -I
 ```
 
-Once SSH is proven, the scripts in [`scripts/`](scripts/) are optional conveniences for installing the wider baseline and collecting a machine report.
+The [`scripts/`](scripts/) directory is only for the remote operator after handoff. It can contain repeatable automation without complicating the physical-install instructions.
 
 See [remote access](docs/REMOTE_ACCESS.md) and [CI-node notes](docs/CI_NODE.md) after the first boot.
 
@@ -50,6 +53,7 @@ See [remote access](docs/REMOTE_ACCESS.md) and [CI-node notes](docs/CI_NODE.md) 
 This repository optimizes for a remote video call with a competent person who simply has not installed this exact machine before. It therefore:
 
 - shows one recommended path rather than every Ubuntu option;
+- keeps every physical-install command directly in the Markdown guide;
 - uses screenshots only where a wrong click would be expensive or confusing;
 - links back to canonical upstream documentation;
 - separates physical setup from later remote administration;
