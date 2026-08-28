@@ -12,11 +12,11 @@
 - **8 GB 或更大的 U 盘**（制作安装盘会清空 U 盘）；
 - 另一台 Windows 电脑；
 - 网络；
-- 大约 45–90 分钟，大部分时间是在等下载和安装。
+- 和远程操作方保持视频/语音通话。
 
-## 0. 删除 Windows 之前先检查一下
+## 0. 删除 Windows 之前
 
-第一次先正常进入 Windows，花 5 分钟确认：
+第一次先进入 Windows，确认：
 
 - 屏幕、键盘、触控板、Wi-Fi 正常；
 - Windows 显示大约 **32 GB 内存**；
@@ -26,8 +26,6 @@
 ### 可选：先领取预装 Office
 
 部分中国大陆版本会附带 Office 家庭和学生版。如果 Windows 里显示有随机器附送的 Office，而且以后可能会用，建议**在删除 Windows 之前**先绑定/激活到准备长期使用的 Microsoft 账号。
-
-不需要花时间个性化 Windows。这里主要是确认机器没有硬件问题，以及保留想要的附带软件权益。
 
 ## 1. 下载 Ubuntu 26.04 LTS
 
@@ -59,8 +57,6 @@ Ubuntu 官方 Rufus 说明：
 
 https://ubuntu.com/desktop/docs/en/26.04/how-to/create-a-bootable-usb-stick/#using-rufus
 
-简单步骤：
-
 1. 插入 U 盘。
 2. 打开 Rufus。
 3. 确认 **Device / 设备** 选的是准备清空的 U 盘。
@@ -82,7 +78,7 @@ https://ubuntu.com/desktop/docs/en/26.04/how-to/create-a-bootable-usb-stick/#usi
 
 如果 F12 被当成功能快捷键，可以试 **Fn+F12**。
 
-**第一次先保持 Secure Boot 开启。** Ubuntu 官方安装镜像可以在 Secure Boot 开启的情况下启动。没有必要为了第一次安装去设置 UEFI 密码或关闭 Secure Boot。
+**第一次先保持 Secure Boot 开启。** Ubuntu 官方安装镜像可以在 Secure Boot 开启的情况下启动。
 
 如果启动菜单里完全看不到 U 盘，先停下来确认，不要随便改固件设置。
 
@@ -98,7 +94,7 @@ https://ubuntu.com/desktop/docs/en/26.04/how-to/create-a-bootable-usb-stick/#usi
 
 - 屏幕显示正常；
 - 键盘和触控板正常；
-- Wi-Fi 能看到并连接网络；
+- Wi-Fi 能连接；
 - 扬声器正常；
 - 没有异常卡死或重启。
 
@@ -108,9 +104,7 @@ https://ubuntu.com/desktop/docs/en/26.04/how-to/create-a-bootable-usb-stick/#usi
 
 使用普通的交互式安装。
 
-### Applications
-
-选择 **Default selection**，CI 机器不需要额外办公软件。
+选择 **Default selection**：
 
 ![Ubuntu 26.04 applications](https://raw.githubusercontent.com/ubuntu/ubuntu-desktop-documentation/b8ac89eb51c82da87875ab4d65469f5615f0afd6/docs/images/installer/applications.png)
 
@@ -126,9 +120,7 @@ https://ubuntu.com/desktop/docs/en/26.04/how-to/create-a-bootable-usb-stick/#usi
 
 继续之前，确认目标是电脑内部的 **约 1 TB SSD**。
 
-### 磁盘加密
-
-这台机器准备长期作为无人值守 CI 节点。第一次安装建议**不启用全盘加密**，这样断电重启后不会卡在必须现场输入磁盘密码的界面。以后如果需要加密，可以和远程解锁方案一起设计。
+这台机器准备长期作为无人值守节点。第一次安装建议**不启用全盘加密**，这样断电重启后不会卡在必须现场输入磁盘密码的界面。
 
 ### 如果看不到内部 SSD，马上停
 
@@ -140,8 +132,6 @@ https://ubuntu.com/desktop/docs/en/26.04/reference/intel-rst-during-ubuntu-insta
 
 ## 7. 创建本地账号
 
-安装程序会要求姓名、电脑名、用户名和密码：
-
 ![Ubuntu 26.04 account](https://raw.githubusercontent.com/ubuntu/ubuntu-desktop-documentation/b8ac89eb51c82da87875ab4d65469f5615f0afd6/docs/images/installer/create-your-account.png)
 
 建议电脑名：
@@ -150,13 +140,11 @@ https://ubuntu.com/desktop/docs/en/26.04/reference/intel-rst-during-ubuntu-insta
 redmi-01
 ```
 
-创建普通管理员账号和强密码。用户名和密码只通过私下方式发送，**绝对不要写进这个公开 GitHub 仓库**。
+创建普通管理员账号和强密码，保留 **Require my password to log in**。
 
-保留 **Require my password to log in**。
+把 **用户名** 私下发给远程操作方。不要把任何账号密码写进这个公开仓库。
 
 ## 8. 最后检查
-
-最后确认页面大致如下：
 
 ![Ubuntu 26.04 ready to install](https://raw.githubusercontent.com/ubuntu/ubuntu-desktop-documentation/b8ac89eb51c82da87875ab4d65469f5615f0afd6/docs/images/installer/ready-to-install.png)
 
@@ -172,49 +160,71 @@ redmi-01
 
 ## 9. 安装完成并重启
 
-完成以后会看到：
-
 ![Ubuntu 26.04 installation complete](https://raw.githubusercontent.com/ubuntu/ubuntu-desktop-documentation/b8ac89eb51c82da87875ab4d65469f5615f0afd6/docs/images/installer/installation-complete.png)
 
 点 **Restart now**。提示拔 U 盘时拔掉 U 盘，然后按 Enter。
 
-进入新的 Ubuntu 桌面后先联网。
+进入 Ubuntu 桌面并连接网络。
 
-## 10. 开启 SSH，完成现场交接
+## 10. 把机器交给远程操作方
+
+推荐使用 **Tailscale SSH**。这样不用改路由器、不用开放公网 22 端口、不用配置动态 DNS，也不用现场复制 SSH 公钥。
 
 按 **Ctrl + Alt + T** 打开 Terminal / 终端。
 
-下面代码框右上角有 GitHub 的复制按钮。**把整个代码框一次复制，粘贴到 Terminal，然后按 Enter。**
+### 10a. 安装普通 SSH 和 Tailscale
+
+点击下面代码框右上角的 GitHub 复制按钮，把**整个代码框**复制进 Terminal，然后按 Enter：
 
 ```bash
 sudo apt update
-sudo apt install -y openssh-server
+sudo apt install -y openssh-server curl
 sudo systemctl enable --now ssh
-printf '\nComputer name: '; hostname
-printf 'Local IP address(es): '; hostname -I
+curl -fsSL https://tailscale.com/install.sh | sh
 ```
 
-第一条命令以后可能会要求输入 Ubuntu 本地密码。Terminal 里输入密码时**屏幕不会显示任何字符**，正常输入密码然后按 Enter 即可。
+可能会要求输入 Ubuntu 本地密码。Terminal 里输入密码时屏幕不会显示字符，正常输入然后按 Enter 即可。
 
-命令完成后，私下把下面三项发给远程操作的人：
+如果 Tailscale 下载/安装失败，**先停下来联系远程操作方**。普通 OpenSSH 已经装好了，所以还有备用方案。
 
-1. 第 7 步创建的 Ubuntu **用户名**；
-2. 命令输出里的 **Computer name**；
-3. 命令输出里的 **Local IP address(es)**。
+### 10b. 加入远程操作方的 Tailscale 网络，并启用 Tailscale SSH
 
-密码不要写进这个公开仓库。
-
-如果另一台电脑也在同一个局域网，远程操作方可以在那台电脑上测试：
+复制并运行：
 
 ```bash
-ssh USERNAME@LAN_IP
+sudo tailscale up --ssh --hostname=redmi-01
 ```
 
-这条是给远程操作方用的，安装 Ubuntu 的人不需要执行。
+命令会显示一个以 `https://login.tailscale.com/...` 开头的网址。
 
-做到这里，现场必须完成的步骤就结束了。后续安装开发工具、硬件检查工具、CI Runner、电池设置和远程网络工具，都可以由远程操作方处理。仓库里的 [`scripts/`](../../scripts/) 只是给远程操作方使用的可选便利工具，**本安装指南不要求运行任何脚本**。
+**把这个网址私下发给远程操作方。** 现场的人不需要知道远程操作方的 Tailscale 密码，也不需要登录对方账号。
 
-**局域网 SSH 只能在同一个本地网络里使用。** 机器以后长期无人值守之前，需要从远程操作方实际所在的网络测试一种稳定的远程接入方式。参见 [`docs/REMOTE_ACCESS.md`](../../docs/REMOTE_ACCESS.md)。
+远程操作方在自己的电脑/手机上打开这个网址，把 REDMI Book 加入自己的 Tailscale 网络。
+
+对方确认成功以后，复制并运行：
+
+```bash
+tailscale status
+printf '\nUbuntu username: '; whoami
+printf 'Computer name: '; hostname
+printf 'Tailscale IP: '; tailscale ip -4
+```
+
+把输出私下发给远程操作方。
+
+### 10c. 远程操作方测试
+
+远程操作方自己的电脑也登录同一个 Tailscale 网络以后，可以测试：
+
+```bash
+ssh UBUNTU_USERNAME@redmi-01
+```
+
+使用 Tailscale SSH 时，这条连接**不需要另外生成和复制 SSH 公钥/私钥**；Tailscale 负责这条 tailnet 内 SSH 连接的身份认证和授权。
+
+从远程操作方**实际所在的网络**成功登录以后，现场必须完成的工作就结束了。后续 CI 工具、电池设置、性能测试等都可以远程完成。
+
+> 中国大陆到境外的网络路由可能让 Tailscale 比其他地区更慢或者偶尔不稳定，所以同时安装普通 OpenSSH，把 Tailscale 当成首选远程路径，而不是唯一的恢复路径。机器长期无人值守以前，一定要实际测试远程连接。
 
 ## 遇到这些情况就停下来确认
 
@@ -224,6 +234,7 @@ ssh USERNAME@LAN_IP
 - BIOS/UEFI 要求输入不知道的密码；
 - Ubuntu 试用环境反复死机/重启；
 - 安装后无法正常启动；
+- Tailscale 无法安装或无法显示登录网址；
 - 任何看起来有风险、又不确定是什么意思的界面。
 
 **拍照比猜更有用。**
