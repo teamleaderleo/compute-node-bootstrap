@@ -12,13 +12,11 @@ If a screen looks materially different from this guide, **stop, take a photo, an
 - an **8 GB or larger USB stick** (everything on it will be erased);
 - another Windows computer to prepare the USB;
 - internet access;
-- about 45–90 minutes, most of it waiting for downloads/install.
+- a video/voice call with the remote operator.
 
-## 0. Before wiping Windows — 5 minutes
+## 0. Before wiping Windows
 
-Boot Windows once before changing anything.
-
-Check:
+Boot Windows once and check:
 
 - display, keyboard, trackpad and Wi-Fi work;
 - Windows reports about **32 GB RAM**;
@@ -28,8 +26,6 @@ Check:
 ### Optional: claim bundled Office
 
 Some China-market REDMI Book configurations include Office Home & Student. If Windows offers a bundled Office license and you might ever want it, activate/claim it to the intended Microsoft account **before erasing Windows**.
-
-Do not spend time personalizing Windows. The purpose of this boot is to catch a defective machine and preserve any bundled license you care about.
 
 ## 1. Download Ubuntu 26.04 LTS
 
@@ -43,7 +39,7 @@ Choose **Ubuntu 26.04 LTS — Intel or AMD 64-bit**. The ISO filename should loo
 ubuntu-26.04-desktop-amd64.iso
 ```
 
-Ubuntu's full installation tutorial is here if you want to cross-check anything:
+Ubuntu's full installation tutorial:
 
 https://ubuntu.com/desktop/docs/en/26.04/tutorial/install-ubuntu-desktop/
 
@@ -53,11 +49,9 @@ Use Rufus from its official site:
 
 https://rufus.ie/
 
-Ubuntu's current Rufus guide:
+Ubuntu's Rufus guide:
 
 https://ubuntu.com/desktop/docs/en/26.04/how-to/create-a-bootable-usb-stick/#using-rufus
-
-The short version:
 
 1. Insert the USB stick.
 2. Open Rufus.
@@ -78,9 +72,9 @@ The short version:
 3. Power on and repeatedly tap **F12** to open the one-time boot menu.
 4. Select the USB device.
 
-If F12 appears to behave like a media/function shortcut, try **Fn+F12**.
+If F12 behaves like a media/function shortcut, try **Fn+F12**.
 
-**Leave Secure Boot enabled for the first attempt.** Ubuntu's signed installer should boot normally with Secure Boot enabled. There is no reason to add a firmware password or disable Secure Boot unless we discover a concrete need later.
+**Leave Secure Boot enabled for the first attempt.** Ubuntu's signed installer should boot normally with Secure Boot enabled.
 
 If the USB does not appear, stop and call. Do not randomly change firmware settings.
 
@@ -92,13 +86,13 @@ Go through language/keyboard/network setup until you reach this page:
 
 Choose **Try Ubuntu** first.
 
-Spend a few minutes checking:
+Check:
 
 - display looks normal;
 - keyboard and trackpad work;
-- Wi-Fi can see/connect to the network;
+- Wi-Fi connects;
 - speakers work;
-- the system does not freeze or behave strangely.
+- the system does not freeze or reboot unexpectedly.
 
 Then open **Install Ubuntu** from the desktop.
 
@@ -106,37 +100,31 @@ Then open **Install Ubuntu** from the desktop.
 
 Use the ordinary interactive installer.
 
-### Applications
-
-Choose **Default selection**. This node does not need the extra office apps.
+Choose **Default selection**:
 
 ![Ubuntu 26.04 applications selection](https://raw.githubusercontent.com/ubuntu/ubuntu-desktop-documentation/b8ac89eb51c82da87875ab4d65469f5615f0afd6/docs/images/installer/applications.png)
 
-If the installer offers third-party drivers/media support, leaving both recommended boxes enabled is fine.
+If the installer offers third-party drivers/media support, leaving the recommended boxes enabled is fine.
 
-## 6. Disk setup — this is the destructive step
+## 6. Disk setup — destructive step
 
-For this machine, choose **Erase disk and install Ubuntu**.
+Choose **Erase disk and install Ubuntu**:
 
 ![Ubuntu 26.04 disk setup](https://raw.githubusercontent.com/ubuntu/ubuntu-desktop-documentation/b8ac89eb51c82da87875ab4d65469f5615f0afd6/docs/images/installer/disk-setup.png)
 
 Before continuing, verify that the target is the **internal ~1 TB SSD**.
 
-### Encryption
-
-For this unattended CI node, choose **no full-disk encryption** during the first installation. A disk-unlock prompt after every reboot would prevent unattended recovery after a power outage. We can revisit encryption later if we also design remote/unattended unlock.
+For this unattended node, choose **no full-disk encryption** during the first installation so a reboot does not require someone physically present to unlock the disk.
 
 ### STOP if the internal SSD is missing
 
 If the installer cannot see the internal ~1 TB drive, **stop and call**. Intel RST/VMD/storage-controller settings can be involved on some Intel PCs; do not change them speculatively.
 
-Ubuntu's reference:
+Ubuntu reference:
 
 https://ubuntu.com/desktop/docs/en/26.04/reference/intel-rst-during-ubuntu-installation/
 
 ## 7. Create the local account
-
-The installer asks for a name, computer name, username and password:
 
 ![Ubuntu 26.04 create account screen](https://raw.githubusercontent.com/ubuntu/ubuntu-desktop-documentation/b8ac89eb51c82da87875ab4d65469f5615f0afd6/docs/images/installer/create-your-account.png)
 
@@ -146,17 +134,15 @@ Recommended computer name:
 redmi-01
 ```
 
-Use a normal local admin user and a strong password. Send the username/password privately to the operator; **never put credentials in this public repository**.
+Create a normal admin user and a strong local password. Keep **Require my password to log in** enabled.
 
-Keep **Require my password to log in** enabled.
+Send the **username** privately to the remote operator. Never put credentials in this public repository.
 
 ## 8. Final review
 
-The last page should look broadly like this:
-
 ![Ubuntu 26.04 ready to install](https://raw.githubusercontent.com/ubuntu/ubuntu-desktop-documentation/b8ac89eb51c82da87875ab4d65469f5615f0afd6/docs/images/installer/ready-to-install.png)
 
-For our machine, the important lines are:
+Important lines for this machine:
 
 - **Erase disk and install Ubuntu**;
 - **Default selection**;
@@ -168,60 +154,83 @@ If those are right, click **Install**.
 
 ## 9. Restart
 
-When installation finishes:
-
 ![Ubuntu 26.04 installation complete](https://raw.githubusercontent.com/ubuntu/ubuntu-desktop-documentation/b8ac89eb51c82da87875ab4d65469f5615f0afd6/docs/images/installer/installation-complete.png)
 
 Click **Restart now**. When prompted, remove the USB stick and press Enter.
 
-Log into the new Ubuntu desktop and connect it to the internet.
+Log into Ubuntu and connect it to the internet.
 
-## 10. Enable SSH for the handoff
+## 10. Give the remote operator control
+
+The preferred handoff is **Tailscale SSH**. This avoids router changes, public SSH ports, dynamic DNS, and manually copying SSH public keys.
 
 Open Terminal with **Ctrl + Alt + T**.
 
-GitHub shows a copy button in the top-right corner of the code block below. **Copy the whole block, paste it into Terminal, and press Enter.**
+### 10a. Install ordinary SSH plus Tailscale
+
+Click GitHub's copy button for this entire block, paste it into Terminal, and press Enter:
 
 ```bash
 sudo apt update
-sudo apt install -y openssh-server
+sudo apt install -y openssh-server curl
 sudo systemctl enable --now ssh
-printf '\nComputer name: '; hostname
-printf 'Local IP address(es): '; hostname -I
+curl -fsSL https://tailscale.com/install.sh | sh
 ```
 
-It may ask for the local Ubuntu password after the first command. When typing a password in Terminal, **nothing appears on screen**; type it normally and press Enter.
+It may ask for the local Ubuntu password. When typing a password in Terminal, nothing appears on screen; type it normally and press Enter.
 
-When the block finishes, send the operator these three things privately:
+If the Tailscale download/install command fails, **stop and call**. Ordinary OpenSSH is already installed, so we still have a fallback path to work with.
 
-1. the Ubuntu **username** created in step 7;
-2. the **Computer name** printed by the block;
-3. the **Local IP address(es)** printed by the block.
+### 10b. Join the operator's Tailscale network and enable Tailscale SSH
 
-Do **not** put the password in this public repository.
-
-If another computer is on the same local network, the operator can test SSH from that computer with:
+Copy and run:
 
 ```bash
-ssh USERNAME@LAN_IP
+sudo tailscale up --ssh --hostname=redmi-01
 ```
 
-That command is for the operator, so the person installing Ubuntu does not need to run it.
+The command prints a web address beginning with `https://login.tailscale.com/...`.
 
-At this point the required physical setup is complete. Any later packages, hardware diagnostics, CI runner software, battery settings, or remote-network tooling can be installed by the operator. The files in [`scripts/`](../../scripts/) are optional operator conveniences; **this installation guide does not require running them**.
+**Send that address privately to the remote operator.** The person holding the laptop does not need the operator's Tailscale password or account.
 
-**LAN SSH only works inside the same local network.** Before the machine is eventually left unattended somewhere, establish and test a durable remote-access path from the operator's actual network. See [`docs/REMOTE_ACCESS.md`](../../docs/REMOTE_ACCESS.md).
+The remote operator opens that address on their own device and authenticates the REDMI Book into their Tailscale network.
+
+After the operator says authentication succeeded, copy and run:
+
+```bash
+tailscale status
+printf '\nUbuntu username: '; whoami
+printf 'Computer name: '; hostname
+printf 'Tailscale IP: '; tailscale ip -4
+```
+
+Send the output privately to the operator.
+
+### 10c. Operator test
+
+The remote operator, from a computer that is also signed into the same Tailscale network, can now try:
+
+```bash
+ssh UBUNTU_USERNAME@redmi-01
+```
+
+With Tailscale SSH, no separately generated SSH key pair is required for this connection. Tailscale handles the SSH identity/authorization for traffic arriving over the tailnet.
+
+Once that succeeds **from the operator's actual remote network**, the required physical setup is complete. The operator can install CI tooling, configure power/battery behavior, benchmark the machine, and manage it remotely.
+
+> Mainland-China cross-border connectivity can make Tailscale slower or less reliable than elsewhere. We install normal OpenSSH too so Tailscale is a preferred path rather than the sole recovery mechanism. Test the real remote connection before leaving the node unattended.
 
 ## Stop conditions
 
-Stop and call if any of these happen:
+Stop and call if:
 
 - the Ubuntu USB is absent from the boot menu;
 - the installer cannot see the internal ~1 TB SSD;
 - the installer proposes erasing an unexpected disk;
 - firmware asks for an unfamiliar password;
-- the machine repeatedly freezes/reboots in the live environment;
-- the installed system does not boot after restart;
+- the live environment repeatedly freezes/reboots;
+- the installed system does not boot;
+- Tailscale cannot install or produce an authentication URL;
 - any screen looks risky and you are unsure what it means.
 
 Photos are more useful than guesses.
