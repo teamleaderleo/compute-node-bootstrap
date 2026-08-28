@@ -73,15 +73,17 @@ tailscale.io
 *.tailscale.io
 ts.net
 *.ts.net
+connectivity-check.ubuntu.com
 ```
 
-The override was committed and applied. The selected
+`connectivity-check.ubuntu.com` is included because Tailscale's captive-portal check was also receiving an unusable Fake-IP answer. The override was committed and applied. The selected
 `beryl7-openclash-cn-direct-v2.yaml` profile, proxy mode, and proxy credentials
 were not changed.
 
 Immediately after applying:
 
 - `controlplane.tailscale.com` returned a real `192.200.x.x` address;
+- `connectivity-check.ubuntu.com` returned a real `91.189.91.x` address;
 - `tailscaled` completed a fresh authenticated control-plane login;
 - the local Beryl peer was direct at roughly 2–3 ms;
 - OpenClash continued providing the existing Los Angeles internet egress.
@@ -153,7 +155,7 @@ that task; keep ChatGPT Remote conceptually separate.
 Router rollback:
 
 1. Open **OpenClash → Overwrite Settings → DNS Settings**.
-2. Remove the six Tailscale patterns above, or disable the custom
+2. Remove the seven exception patterns above, or disable the custom
    **Fake-IP-Filter**.
 3. **Commit Settings**, then **Apply Settings**.
 4. Confirm the previous profile is still selected.
