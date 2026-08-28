@@ -176,23 +176,36 @@ Click **Restart now**. When prompted, remove the USB stick and press Enter.
 
 Log into the new Ubuntu desktop and connect it to the internet.
 
-## 10. Hand the machine over remotely
+## 10. Enable SSH for the handoff
 
-Open Terminal (`Ctrl` + `Alt` + `T`) and run:
+Open Terminal (`Ctrl` + `Alt` + `T`) and run these four commands:
+
+```bash
+sudo apt update
+sudo apt install -y openssh-server
+sudo systemctl enable --now ssh
+hostname -I
+```
+
+The last command prints the machine's local-network IP address. If another computer is on the same network, it can now test:
+
+```bash
+ssh USERNAME@LAN_IP
+```
+
+That completes the minimum physical setup without depending on GitHub being reachable from the new installation.
+
+If GitHub is reachable, the convenience scripts can then install the rest of the baseline and collect a hardware report:
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/teamleaderleo/compute-node-bootstrap/main/scripts/bootstrap-ubuntu.sh
 bash bootstrap-ubuntu.sh
-```
 
-Then:
-
-```bash
 curl -fsSLO https://raw.githubusercontent.com/teamleaderleo/compute-node-bootstrap/main/scripts/host-report.sh
 bash host-report.sh
 ```
 
-The bootstrap enables SSH and prints the LAN IP addresses. At that point the physical installation is complete; the operator can choose the remote-access method and CI software separately.
+**LAN SSH is only the first handoff test.** Before the machine is left unattended, establish and test one durable remote-access path from the operator's actual network. See [`docs/REMOTE_ACCESS.md`](../../docs/REMOTE_ACCESS.md).
 
 ## Stop conditions
 
