@@ -17,8 +17,8 @@ If you are preparing the **mint-green GL.iNet Beryl 7 (GL-MT3600BE)** before the
 
 The physical REDMI part is intentionally short:
 
-1. Verify the new laptop in Windows and claim any bundled software license you want to keep.
-2. Make an Ubuntu 26.04 USB stick.
+1. Verify the new laptop in Windows and create its Windows recovery USB.
+2. Use the laptop's own Windows installation to make the Ubuntu 26.04 USB.
 3. Boot it with the one-time boot menu.
 4. Try Ubuntu and check the hardware.
 5. Erase Windows and install Ubuntu.

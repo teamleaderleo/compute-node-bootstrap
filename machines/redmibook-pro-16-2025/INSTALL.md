@@ -9,10 +9,12 @@ If a screen looks materially different from this guide, **stop, take a photo, an
 ## What you need
 
 - the REDMI Book and charger;
-- an **8 GB or larger USB stick** (everything on it will be erased);
-- another Windows computer to prepare the USB;
+- one **16 GB or larger USB stick** for Ubuntu;
+- one **32 GB or larger USB stick** for Windows recovery;
 - internet access;
 - a video/voice call with the remote operator.
+
+Use the new REDMI Book's own Windows installation to prepare both USB drives. The work ThinkPads and iPad are not needed for this.
 
 ## 0. Before wiping Windows
 
@@ -22,6 +24,18 @@ Boot Windows once and check:
 - Windows reports about **32 GB RAM**;
 - the internal SSD is about **1 TB**;
 - the charger works.
+
+### Make the Windows recovery USB
+
+1. Insert the 32 GB USB stick.
+2. Open Start and search for **Recovery Drive**.
+3. Open it and keep **Back up system files to the recovery drive** selected.
+4. Choose the 32 GB USB stick and click **Create**.
+5. Label it `REDMI Windows recovery` and set it aside when it finishes.
+
+If **Settings → Privacy & security → Device encryption** is on, save the recovery key. If it is off, continue.
+
+Microsoft's reference: https://support.microsoft.com/en-US/Windows/Experience/backup-recovery/recovery-drive
 
 ### Optional: claim bundled Office
 
@@ -53,15 +67,28 @@ Ubuntu's Rufus guide:
 
 https://ubuntu.com/desktop/docs/en/26.04/how-to/create-a-bootable-usb-stick/#using-rufus
 
-1. Insert the USB stick.
-2. Open Rufus.
-3. Confirm **Device** is the USB stick you intend to erase.
-4. Click **SELECT** and choose `ubuntu-26.04-desktop-amd64.iso`.
-5. Leave the normal defaults alone.
-6. Click **START**.
-7. If Rufus asks about an ISOHybrid image, choose **Write in ISO Image mode**.
-8. Confirm the USB erase warning.
-9. Wait for **READY**, then close Rufus.
+1. Remove the Windows recovery USB, then insert the 16 GB Ubuntu USB.
+2. Open Rufus. Under **Device**, choose the Ubuntu USB.
+
+![Rufus detects the USB](images/rufus/rufus-detects-usb.png)
+
+3. Click **SELECT** and choose `ubuntu-26.04-desktop-amd64.iso`.
+4. Leave the normal defaults alone. If **Enable runtime UEFI media validation** appears under the advanced format options, leave it unchecked.
+
+![Rufus with an Ubuntu ISO selected](images/rufus/rufus-iso-selected.png)
+
+5. Click **START**.
+6. If Rufus asks about an ISOHybrid image, choose **Write in ISO Image mode** and click **OK**.
+
+![Rufus ISOHybrid choice](images/rufus/rufus-isohybrid-image.png)
+
+7. At the erase confirmation, click **OK**.
+
+![Rufus USB erase confirmation](images/rufus/rufus-data-warning.png)
+
+8. Wait until the status says **READY**, then close Rufus.
+
+![Rufus finished writing the Ubuntu USB](images/rufus/rufus-finished-writing.png)
 
 > Ubuntu's current 26.04 documentation still shows an older 24.04 ISO filename in its Rufus screenshots. Your downloaded file should say **26.04**.
 
@@ -82,7 +109,7 @@ If the USB does not appear, stop and call. Do not randomly change firmware setti
 
 Go through language/keyboard/network setup until you reach this page:
 
-![Ubuntu 26.04 Try or install screen](https://raw.githubusercontent.com/ubuntu/ubuntu-desktop-documentation/b8ac89eb51c82da87875ab4d65469f5615f0afd6/docs/images/installer/try-or-install-ubuntu.png)
+![Ubuntu 26.04 Try or install screen](images/ubuntu-installer/try-or-install-ubuntu.png)
 
 Choose **Try Ubuntu** first.
 
@@ -102,7 +129,7 @@ Use the ordinary interactive installer.
 
 Choose **Default selection**:
 
-![Ubuntu 26.04 applications selection](https://raw.githubusercontent.com/ubuntu/ubuntu-desktop-documentation/b8ac89eb51c82da87875ab4d65469f5615f0afd6/docs/images/installer/applications.png)
+![Ubuntu 26.04 applications selection](images/ubuntu-installer/applications.png)
 
 If the installer offers third-party drivers/media support, leaving the recommended boxes enabled is fine.
 
@@ -110,7 +137,7 @@ If the installer offers third-party drivers/media support, leaving the recommend
 
 Choose **Erase disk and install Ubuntu**:
 
-![Ubuntu 26.04 disk setup](https://raw.githubusercontent.com/ubuntu/ubuntu-desktop-documentation/b8ac89eb51c82da87875ab4d65469f5615f0afd6/docs/images/installer/disk-setup.png)
+![Ubuntu 26.04 disk setup](images/ubuntu-installer/disk-setup.png)
 
 Before continuing, verify that the target is the **internal ~1 TB SSD**.
 
@@ -126,7 +153,7 @@ https://ubuntu.com/desktop/docs/en/26.04/reference/intel-rst-during-ubuntu-insta
 
 ## 7. Create the local account
 
-![Ubuntu 26.04 create account screen](https://raw.githubusercontent.com/ubuntu/ubuntu-desktop-documentation/b8ac89eb51c82da87875ab4d65469f5615f0afd6/docs/images/installer/create-your-account.png)
+![Ubuntu 26.04 create account screen](images/ubuntu-installer/create-your-account.png)
 
 Recommended computer name:
 
@@ -136,11 +163,11 @@ redmi-01
 
 Create a normal admin user and a strong local password. Keep **Require my password to log in** enabled.
 
-Send the **username** privately to the remote operator. Never put credentials in this public repository.
+Send the **username** to the remote operator.
 
 ## 8. Final review
 
-![Ubuntu 26.04 ready to install](https://raw.githubusercontent.com/ubuntu/ubuntu-desktop-documentation/b8ac89eb51c82da87875ab4d65469f5615f0afd6/docs/images/installer/ready-to-install.png)
+![Ubuntu 26.04 ready to install](images/ubuntu-installer/ready-to-install.png)
 
 Important lines for this machine:
 
@@ -154,7 +181,7 @@ If those are right, click **Install**.
 
 ## 9. Restart
 
-![Ubuntu 26.04 installation complete](https://raw.githubusercontent.com/ubuntu/ubuntu-desktop-documentation/b8ac89eb51c82da87875ab4d65469f5615f0afd6/docs/images/installer/installation-complete.png)
+![Ubuntu 26.04 installation complete](images/ubuntu-installer/installation-complete.png)
 
 Click **Restart now**. When prompted, remove the USB stick and press Enter.
 
@@ -191,7 +218,7 @@ sudo tailscale up --ssh --hostname=redmi-01
 
 The command prints a web address beginning with `https://login.tailscale.com/...`.
 
-**Send that address privately to the remote operator.** The person holding the laptop does not need the operator's Tailscale password or account.
+Send that address to the remote operator. The person holding the laptop does not need the operator's Tailscale password or account.
 
 The remote operator opens that address on their own device and authenticates the REDMI Book into their Tailscale network.
 
@@ -204,7 +231,7 @@ printf 'Computer name: '; hostname
 printf 'Tailscale IP: '; tailscale ip -4
 ```
 
-Send the output privately to the operator.
+Send the output to the operator.
 
 ### 10c. Operator test
 

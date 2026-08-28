@@ -42,6 +42,8 @@ https://docs.gl-inet.com/router/en/4/interface_guide/tailscale/
 
 ## REDMI side: advertise an exit node
 
+First complete the illustrated [English](../machines/redmibook-pro-16-2025/INSTALL.md) or [中文](../machines/redmibook-pro-16-2025/INSTALL.zh-CN.md) REDMI Book handoff guide.
+
 After Tailscale is already working on `redmi-01`, enable Linux IP forwarding:
 
 ```bash

@@ -2,16 +2,16 @@
 
 ## Ubuntu Desktop documentation screenshots
 
-The REDMI Book installation guides embed selected screenshots from:
+The REDMI Book installation guides include selected installer and Rufus screenshots from:
 
 - **Ubuntu Desktop documentation**
 - Repository: https://github.com/ubuntu/ubuntu-desktop-documentation
 - Documentation: https://ubuntu.com/desktop/docs/en/26.04/
-- Source snapshot used for the image URLs: commit `b8ac89eb51c82da87875ab4d65469f5615f0afd6`
+- Source snapshot: commit `b8ac89eb51c82da87875ab4d65469f5615f0afd6`
 - License: **Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)**
 - License text: https://creativecommons.org/licenses/by-sa/4.0/
 
-The screenshots are embedded from pinned `raw.githubusercontent.com` URLs rather than copied into this repository. They are unmodified. Their captions/context in this repository are adapted for the REDMI Book installation path.
+The screenshots are copied into `machines/redmibook-pro-16-2025/images/` so the illustrated guide does not depend on external image URLs while it is being followed. They are unmodified. Their captions and surrounding instructions are adapted for the REDMI Book installation path.
 
 Ubuntu Desktop documentation repository metadata identifies its license as `CC-BY-SA-4.0`.
 

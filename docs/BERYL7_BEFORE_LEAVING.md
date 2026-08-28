@@ -109,6 +109,8 @@ When Stash or another proxy is also running on the test Mac, its public-IP resul
 
 ## 7. What happens after the REDMI arrives
 
+Use the illustrated [English](../machines/redmibook-pro-16-2025/INSTALL.md) or [中文](../machines/redmibook-pro-16-2025/INSTALL.zh-CN.md) laptop handoff guide.
+
 Later:
 
 1. install Ubuntu 26.04 on `redmi-01`;

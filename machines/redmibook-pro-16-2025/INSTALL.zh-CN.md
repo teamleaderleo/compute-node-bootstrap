@@ -9,10 +9,12 @@
 ## 需要准备
 
 - REDMI Book 和电源；
-- **8 GB 或更大的 U 盘**（制作安装盘会清空 U 盘）；
-- 另一台 Windows 电脑；
+- 一个 **16 GB 或更大的 U 盘**，用来安装 Ubuntu；
+- 一个 **32 GB 或更大的 U 盘**，用来保存 Windows 恢复盘；
 - 网络；
 - 和远程操作方保持视频/语音通话。
+
+直接用新 REDMI Book 自带的 Windows 制作两个 U 盘。不需要使用工作 ThinkPad；iPad 只用于视频通话。
 
 ## 0. 删除 Windows 之前
 
@@ -22,6 +24,18 @@
 - Windows 显示大约 **32 GB 内存**；
 - 内置 SSD 大约 **1 TB**；
 - 充电正常。
+
+### 制作 Windows 恢复 U 盘
+
+1. 插入 32 GB U 盘。
+2. 打开开始菜单，搜索 **Recovery Drive / 恢复驱动器**。
+3. 打开以后，保留 **Back up system files to the recovery drive / 将系统文件备份到恢复驱动器** 的勾选。
+4. 选择这个 32 GB U 盘，点 **Create / 创建**。
+5. 完成后标记为 `REDMI Windows recovery`，拔出并收好。
+
+如果 **Settings → Privacy & security → Device encryption / 设置 → 隐私和安全性 → 设备加密** 已开启，保存恢复密钥；如果显示关闭，直接继续。
+
+微软说明：https://support.microsoft.com/en-US/Windows/Experience/backup-recovery/recovery-drive
 
 ### 可选：先领取预装 Office
 
@@ -57,15 +71,28 @@ Ubuntu 官方 Rufus 说明：
 
 https://ubuntu.com/desktop/docs/en/26.04/how-to/create-a-bootable-usb-stick/#using-rufus
 
-1. 插入 U 盘。
-2. 打开 Rufus。
-3. 确认 **Device / 设备** 选的是准备清空的 U 盘。
-4. 点 **SELECT / 选择**，选择 `ubuntu-26.04-desktop-amd64.iso`。
-5. 其他常规选项保持默认。
-6. 点 **START / 开始**。
-7. 如果提示 ISOHybrid，选择 **Write in ISO Image mode**。
-8. 再确认一次要清空的是这个 U 盘。
-9. 等状态显示 **READY**，然后关闭 Rufus。
+1. 拔掉 Windows 恢复 U 盘，再插入 16 GB Ubuntu U 盘。
+2. 打开 Rufus，在 **Device / 设备** 中选择 Ubuntu U 盘。
+
+![Rufus 识别到 U 盘](images/rufus/rufus-detects-usb.png)
+
+3. 点 **SELECT / 选择**，选择 `ubuntu-26.04-desktop-amd64.iso`。
+4. 常规选项保持默认。如果高级格式选项里出现 **Enable runtime UEFI media validation**，不要勾选。
+
+![Rufus 已选择 Ubuntu ISO](images/rufus/rufus-iso-selected.png)
+
+5. 点 **START / 开始**。
+6. 如果提示 ISOHybrid，选择 **Write in ISO Image mode**，再点 **OK**。
+
+![Rufus ISOHybrid 选项](images/rufus/rufus-isohybrid-image.png)
+
+7. 出现清空 U 盘的确认窗口时，点 **OK**。
+
+![Rufus 清空 U 盘确认](images/rufus/rufus-data-warning.png)
+
+8. 等状态显示 **READY**，然后关闭 Rufus。
+
+![Rufus 已完成 Ubuntu U 盘](images/rufus/rufus-finished-writing.png)
 
 > Ubuntu 当前 26.04 文档里的 Rufus 截图还显示旧的 24.04 文件名。实际下载的文件应该写 **26.04**。
 
@@ -86,7 +113,7 @@ https://ubuntu.com/desktop/docs/en/26.04/how-to/create-a-bootable-usb-stick/#usi
 
 按语言、键盘、网络走到下面这个界面：
 
-![Ubuntu 26.04 Try or install](https://raw.githubusercontent.com/ubuntu/ubuntu-desktop-documentation/b8ac89eb51c82da87875ab4d65469f5615f0afd6/docs/images/installer/try-or-install-ubuntu.png)
+![Ubuntu 26.04 Try or install](images/ubuntu-installer/try-or-install-ubuntu.png)
 
 先选 **Try Ubuntu / 试用 Ubuntu**。
 
@@ -106,7 +133,7 @@ https://ubuntu.com/desktop/docs/en/26.04/how-to/create-a-bootable-usb-stick/#usi
 
 选择 **Default selection**：
 
-![Ubuntu 26.04 applications](https://raw.githubusercontent.com/ubuntu/ubuntu-desktop-documentation/b8ac89eb51c82da87875ab4d65469f5615f0afd6/docs/images/installer/applications.png)
+![Ubuntu 26.04 applications](images/ubuntu-installer/applications.png)
 
 如果安装程序询问第三方驱动/媒体格式支持，保留推荐选项即可。
 
@@ -116,7 +143,7 @@ https://ubuntu.com/desktop/docs/en/26.04/how-to/create-a-bootable-usb-stick/#usi
 
 **Erase disk and install Ubuntu / 清除磁盘并安装 Ubuntu**
 
-![Ubuntu 26.04 disk setup](https://raw.githubusercontent.com/ubuntu/ubuntu-desktop-documentation/b8ac89eb51c82da87875ab4d65469f5615f0afd6/docs/images/installer/disk-setup.png)
+![Ubuntu 26.04 disk setup](images/ubuntu-installer/disk-setup.png)
 
 继续之前，确认目标是电脑内部的 **约 1 TB SSD**。
 
@@ -132,7 +159,7 @@ https://ubuntu.com/desktop/docs/en/26.04/reference/intel-rst-during-ubuntu-insta
 
 ## 7. 创建本地账号
 
-![Ubuntu 26.04 account](https://raw.githubusercontent.com/ubuntu/ubuntu-desktop-documentation/b8ac89eb51c82da87875ab4d65469f5615f0afd6/docs/images/installer/create-your-account.png)
+![Ubuntu 26.04 account](images/ubuntu-installer/create-your-account.png)
 
 建议电脑名：
 
@@ -142,11 +169,11 @@ redmi-01
 
 创建普通管理员账号和强密码，保留 **Require my password to log in**。
 
-把 **用户名** 私下发给远程操作方。不要把任何账号密码写进这个公开仓库。
+把 **用户名** 发给远程操作方。
 
 ## 8. 最后检查
 
-![Ubuntu 26.04 ready to install](https://raw.githubusercontent.com/ubuntu/ubuntu-desktop-documentation/b8ac89eb51c82da87875ab4d65469f5615f0afd6/docs/images/installer/ready-to-install.png)
+![Ubuntu 26.04 ready to install](images/ubuntu-installer/ready-to-install.png)
 
 重点确认：
 
@@ -160,7 +187,7 @@ redmi-01
 
 ## 9. 安装完成并重启
 
-![Ubuntu 26.04 installation complete](https://raw.githubusercontent.com/ubuntu/ubuntu-desktop-documentation/b8ac89eb51c82da87875ab4d65469f5615f0afd6/docs/images/installer/installation-complete.png)
+![Ubuntu 26.04 installation complete](images/ubuntu-installer/installation-complete.png)
 
 点 **Restart now**。提示拔 U 盘时拔掉 U 盘，然后按 Enter。
 
@@ -197,7 +224,7 @@ sudo tailscale up --ssh --hostname=redmi-01
 
 命令会显示一个以 `https://login.tailscale.com/...` 开头的网址。
 
-**把这个网址私下发给远程操作方。** 现场的人不需要知道远程操作方的 Tailscale 密码，也不需要登录对方账号。
+把这个网址发给远程操作方。现场的人不需要知道远程操作方的 Tailscale 密码，也不需要登录对方账号。
 
 远程操作方在自己的电脑/手机上打开这个网址，把 REDMI Book 加入自己的 Tailscale 网络。
 
@@ -210,7 +237,7 @@ printf 'Computer name: '; hostname
 printf 'Tailscale IP: '; tailscale ip -4
 ```
 
-把输出私下发给远程操作方。
+把输出发给远程操作方。
 
 ### 10c. 远程操作方测试
 
