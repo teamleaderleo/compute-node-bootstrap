@@ -19,9 +19,8 @@ The physical part is intentionally short:
 4. Try Ubuntu and check the hardware.
 5. Erase Windows and install Ubuntu.
 6. Get the machine online.
-7. Copy the inline Markdown blocks that install OpenSSH + Tailscale and enable Tailscale SSH.
-8. Send the Tailscale authentication URL to the remote operator.
-9. Once remote SSH works, let the operator finish everything else.
+7. Copy the inline Markdown blocks that install OpenSSH + Tailscale and establish the first remote foothold.
+8. Once remote access works, let the operator finish everything else.
 
 If anything materially differs from the guide, **stop, take a photo, and call** rather than improvising in firmware or disk-management screens.
 
@@ -37,24 +36,17 @@ The person physically installing the machine should never have to download, insp
 
 Every command required from them appears directly in the machine's Markdown installation guide in fenced code blocks with GitHub's normal **Copy** button.
 
-The preferred remote handoff uses **Tailscale SSH**. It avoids router port forwarding, public SSH exposure, dynamic DNS, and manually installing the operator's SSH public key. Ordinary OpenSSH is installed at the same time as a fallback.
-
-With Tailscale SSH, the physical helper only needs to:
-
-1. paste the install block;
-2. paste `sudo tailscale up --ssh --hostname=redmi-01`;
-3. send the printed Tailscale login URL to the operator;
-4. send the final status block output.
-
-The remote operator authenticates the node into the tailnet from their own device and then tests:
-
-```bash
-ssh UBUNTU_USERNAME@redmi-01
-```
+The first remote foothold uses Tailscale because it avoids router port forwarding and public SSH exposure. After remote access is proven, the operator can install a conventional, explicitly named SSH key (`~/.ssh/id_ed25519_redmi01`) and use ordinary OpenSSH authentication.
 
 The [`scripts/`](scripts/) directory is only for the remote operator after handoff.
 
-See [remote access](docs/REMOTE_ACCESS.md) and [CI-node notes](docs/CI_NODE.md) after the first boot.
+## After first boot
+
+- [Remote access and named SSH key](docs/REMOTE_ACCESS.md)
+- [GL.iNet router → REDMI exit node](docs/GLINET_EXIT_NODE.md)
+- [CI-node notes](docs/CI_NODE.md)
+
+The GL.iNet route is useful for devices that should not install Tailscale themselves: the router can join the tailnet and send connected-device traffic through the REDMI Book as a Custom Exit Node.
 
 ## Design rule
 
