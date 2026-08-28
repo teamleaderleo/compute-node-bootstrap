@@ -15,6 +15,7 @@ Issue #1 was carried out against the actual router with these results:
 - upstream connection: Ethernet WAN using DHCP from the ZTE/Big Brouter network;
 - built-in Tailscale: present as a **Beta** feature, running Tailscale **1.92.5**;
 - tailnet device name: **`gl-mt3600be`**, confirmed online;
+- Tailscale device-key expiry: disabled for this long-lived router;
 - GoodCloud: disabled;
 - Custom Exit Node, Run Exit Node, WAN/LAN subnet advertisement and IP Masquerading: all left off.
 - after returning the Mac to Big Brouter, connection attempts to the Beryl WAN address on ports 22, 80 and 443 timed out; router administration remained available only from the Beryl LAN in this test.
