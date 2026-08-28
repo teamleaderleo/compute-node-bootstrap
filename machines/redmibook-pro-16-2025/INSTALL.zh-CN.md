@@ -182,34 +182,39 @@ redmi-01
 
 ## 10. 开启 SSH，完成现场交接
 
-打开 Terminal（`Ctrl` + `Alt` + `T`），依次运行下面四条命令：
+按 **Ctrl + Alt + T** 打开 Terminal / 终端。
+
+下面代码框右上角有 GitHub 的复制按钮。**把整个代码框一次复制，粘贴到 Terminal，然后按 Enter。**
 
 ```bash
 sudo apt update
 sudo apt install -y openssh-server
 sudo systemctl enable --now ssh
-hostname -I
+printf '\nComputer name: '; hostname
+printf 'Local IP address(es): '; hostname -I
 ```
 
-最后一条会显示这台机器在局域网里的 IP 地址。同一个网络里的另一台电脑可以先测试：
+第一条命令以后可能会要求输入 Ubuntu 本地密码。Terminal 里输入密码时**屏幕不会显示任何字符**，正常输入密码然后按 Enter 即可。
+
+命令完成后，私下把下面三项发给远程操作的人：
+
+1. 第 7 步创建的 Ubuntu **用户名**；
+2. 命令输出里的 **Computer name**；
+3. 命令输出里的 **Local IP address(es)**。
+
+密码不要写进这个公开仓库。
+
+如果另一台电脑也在同一个局域网，远程操作方可以在那台电脑上测试：
 
 ```bash
-ssh 用户名@局域网IP
+ssh USERNAME@LAN_IP
 ```
 
-这样最基本的现场安装就完成了，而且**不依赖新装的 Ubuntu 此时能否访问 GitHub**。
+这条是给远程操作方用的，安装 Ubuntu 的人不需要执行。
 
-如果 GitHub 访问正常，可以再运行仓库里的便利脚本，安装其余基础工具并生成硬件报告：
+做到这里，现场必须完成的步骤就结束了。后续安装开发工具、硬件检查工具、CI Runner、电池设置和远程网络工具，都可以由远程操作方处理。仓库里的 [`scripts/`](../../scripts/) 只是给远程操作方使用的可选便利工具，**本安装指南不要求运行任何脚本**。
 
-```bash
-curl -fsSLO https://raw.githubusercontent.com/teamleaderleo/compute-node-bootstrap/main/scripts/bootstrap-ubuntu.sh
-bash bootstrap-ubuntu.sh
-
-curl -fsSLO https://raw.githubusercontent.com/teamleaderleo/compute-node-bootstrap/main/scripts/host-report.sh
-bash host-report.sh
-```
-
-**局域网 SSH 只是第一步。** 在把机器长期放着无人值守之前，还需要从远程操作方实际所在的网络测试一种稳定的远程接入方式。参见 [`docs/REMOTE_ACCESS.md`](../../docs/REMOTE_ACCESS.md)。
+**局域网 SSH 只能在同一个本地网络里使用。** 机器以后长期无人值守之前，需要从远程操作方实际所在的网络测试一种稳定的远程接入方式。参见 [`docs/REMOTE_ACCESS.md`](../../docs/REMOTE_ACCESS.md)。
 
 ## 遇到这些情况就停下来确认
 
