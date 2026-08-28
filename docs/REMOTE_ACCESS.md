@@ -1,46 +1,68 @@
 # Remote access
 
-The physical install and the remote-access design are separate problems.
+For the REDMI Book, the preferred first remote-control path is **Tailscale SSH**, with ordinary OpenSSH installed as a fallback.
 
-The first goal is simple: get Ubuntu online, enable OpenSSH, and prove that SSH works **on the local network**. Then choose a durable remote path based on where the machine actually lives and what connectivity works there.
+## Preferred path: Tailscale SSH
 
-## 1. Prove SSH on the LAN
+Why this is attractive for a laptop behind a residential router:
 
-On the REDMI Book:
+- no router port forwarding;
+- no public port 22;
+- no dynamic DNS;
+- the Tailscale address/hostname stays stable when the machine changes networks;
+- no manual SSH public-key distribution is required for Tailscale SSH;
+- the operator can authenticate the new node into the tailnet from their own browser.
+
+The family-facing install guide contains the exact copy/paste blocks.
+
+After Tailscale is installed on the node:
 
 ```bash
-hostname
-hostname -I
-systemctl status ssh --no-pager
+sudo tailscale up --ssh --hostname=redmi-01
 ```
 
-From another computer on the same LAN:
+That command prints a `https://login.tailscale.com/...` authentication URL. The person physically holding the node sends that URL privately to the operator. The operator opens it and authenticates the node into their tailnet.
+
+From the operator's machine, which must also be signed into the same tailnet:
 
 ```bash
-ssh USER@LAN_IP
+ssh UBUNTU_USERNAME@redmi-01
 ```
 
-Once that works, install the operator's SSH public key in `~/.ssh/authorized_keys`. After key login has been proven, password SSH can be disabled.
+If the tailnet still uses Tailscale's default access-control policy, its default Tailscale SSH policy allows a user to connect to their own devices. If the tailnet ACL/policy has been customized, verify that it permits both network access and Tailscale SSH access to this node.
 
-## 2. Do not forward public port 22
+## Why there is still an OpenSSH server
 
-Avoid a router rule that exposes the laptop's SSH daemon directly to the public internet.
+The install guide also installs `openssh-server` and enables it.
 
-A CI node usually has no need for unsolicited public inbound connections.
+Tailscale SSH only intercepts SSH traffic arriving through the Tailscale address. Normal OpenSSH can still serve LAN or other deliberately configured paths, so keeping it installed gives us a second recovery mechanism.
 
-## 3. Remote-access options
+If we later decide to use ordinary SSH authentication, the operator can generate an Ed25519 key pair on their own machine:
 
-Choose this after testing the final network.
+```bash
+ssh-keygen -t ed25519
+```
 
-### Private overlay network
+Only the public key belongs on the REDMI Book. The private key never leaves the operator's machine. This can all be configured remotely after the first Tailscale SSH session, so there is no reason to make the physical installer handle SSH keys.
 
-Tools such as Tailscale or ZeroTier can make the node reachable through a private address without router port forwarding. They are convenient when their control/data paths work reliably from the node's location.
+## Mainland-China caveat
 
-For a machine initially configured in mainland China, treat this as something to **test**, rather than a prerequisite for completing the Ubuntu install.
+The node is initially being configured in mainland China. Tailscale generally tries direct peer-to-peer connectivity and falls back to encrypted relay paths when direct connectivity is unavailable. Cross-border routing and the lack of an official mainland-China relay location can make latency or reliability less predictable than in many other regions.
 
-### Reverse SSH through a server you control
+For interactive shell administration, a relayed connection can still be entirely adequate. Test the connection from the operator's real network before relying on it unattended.
 
-If you have a small public server reachable from both sides, the node can establish an outbound SSH connection to that server and publish a loopback-only reverse port there. This traverses ordinary home NAT because the connection originates from the node.
+Useful diagnostics:
+
+```bash
+tailscale status
+tailscale ping redmi-01
+```
+
+They show whether the connection is direct or relayed.
+
+## Fallback: reverse SSH
+
+If Tailscale is unavailable or performs poorly and the operator has a public server reachable from both sides, the node can maintain an outbound reverse SSH tunnel to that server. Because the node initiates the connection, this works through ordinary home NAT.
 
 Conceptually:
 
@@ -48,38 +70,27 @@ Conceptually:
 ssh -N -R 127.0.0.1:2222:localhost:22 USER@YOUR_SERVER
 ```
 
-Then, on the server:
+Then, from the server:
 
 ```bash
 ssh -p 2222 LOCAL_USER@127.0.0.1
 ```
 
-Do the real setup with SSH keys, host-key checking, a dedicated account, and a systemd/autossh service. The exact configuration belongs with the server configuration rather than in the family-facing install instructions.
+A real deployment should use SSH keys, host-key checking, a dedicated account and a persistent systemd/autossh service.
 
-### GitHub Actions runner
+## GitHub Actions does not require inbound SSH
 
-A GitHub self-hosted Actions runner establishes outbound connections to GitHub. CI execution therefore does **not** require inbound SSH or a public IP address.
+A GitHub self-hosted Actions runner establishes outbound connections to GitHub. CI execution does not require a public IP address or inbound SSH.
 
-That makes it useful as an independent management path: the node can be doing CI even while we are still deciding how we want interactive administration to work.
+Remote shell access is for administration; runner connectivity is a separate outbound path.
 
-## 4. China → later location
+## After remote access is proven
 
-If the node is first configured in China and later moved elsewhere, keep the machine setup location-independent:
-
-- hostname describes the machine, not the city;
-- Wi-Fi credentials can change without changing the runner identity;
-- remote access is a replaceable layer;
-- GitHub/Glaeda configuration should assume ordinary outbound internet, rather than a fixed residential IP.
-
-## 5. After remote access is proven
-
-Then make the laptop behave like a node:
+Make the laptop behave like an unattended node:
 
 - prevent suspend while connected to AC power;
 - decide what closing the lid should do;
 - configure a 70–80% battery charge ceiling;
 - enable automatic security updates;
 - prefer wired Ethernet at its long-term location when practical;
-- verify recovery after a reboot before relying on the machine unattended.
-
-Do those changes remotely after the base installation is known-good. They do not need to complicate the first video-call install.
+- verify remote recovery after a reboot before relying on the machine unattended.
