@@ -11,7 +11,11 @@ If you are physically holding the REDMI Book, follow:
 - [English install guide](machines/redmibook-pro-16-2025/INSTALL.md)
 - [中文安装指南](machines/redmibook-pro-16-2025/INSTALL.zh-CN.md)
 
-The physical part is intentionally short:
+If you are preparing the **mint-green GL.iNet Beryl 7 (GL-MT3600BE)** before the REDMI arrives:
+
+- [Beryl 7: do this before leaving](docs/BERYL7_BEFORE_LEAVING.md)
+
+The physical REDMI part is intentionally short:
 
 1. Verify the new laptop in Windows and claim any bundled software license you want to keep.
 2. Make an Ubuntu 26.04 USB stick.
@@ -43,10 +47,11 @@ The [`scripts/`](scripts/) directory is only for the remote operator after hando
 ## After first boot
 
 - [Remote access and named SSH key](docs/REMOTE_ACCESS.md)
-- [GL.iNet router → REDMI exit node](docs/GLINET_EXIT_NODE.md)
+- [Beryl 7 pre-departure checklist](docs/BERYL7_BEFORE_LEAVING.md)
+- [Beryl 7 → REDMI exit node](docs/GLINET_EXIT_NODE.md)
 - [CI-node notes](docs/CI_NODE.md)
 
-The GL.iNet route is useful for devices that should not install Tailscale themselves: the router can join the tailnet and send connected-device traffic through the REDMI Book as a Custom Exit Node.
+The Beryl route is useful for devices that should not install Tailscale themselves: the router can join the tailnet and send connected-device traffic through the REDMI Book as a Custom Exit Node.
 
 ## Design rule
 
