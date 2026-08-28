@@ -19,7 +19,8 @@ The physical part is intentionally short:
 4. Try Ubuntu and check the hardware.
 5. Erase Windows and install Ubuntu.
 6. Get the machine online.
-7. Run the bootstrap script so the remote operator can take over.
+7. Enable SSH with four standard Ubuntu commands.
+8. Test a durable remote-access path, then let the remote operator finish setup.
 
 If anything materially differs from the guide, **stop, take a photo, and call**. There is no prize for improvising in firmware or disk-management screens.
 
@@ -29,21 +30,18 @@ Ubuntu 26.04 is the current LTS and ships a newer kernel for recent Intel hardwa
 
 GitHub also provides an `ubuntu-26.04` hosted runner image (currently preview as of August 2026), so 26.04 is already useful as a CI target.
 
-## After Ubuntu is installed
+## Minimum post-install handoff
 
-Run:
-
-```bash
-curl -fsSLO https://raw.githubusercontent.com/teamleaderleo/compute-node-bootstrap/main/scripts/bootstrap-ubuntu.sh
-bash bootstrap-ubuntu.sh
-```
-
-Then collect a basic machine report:
+The family-facing guide does **not** depend on GitHub/raw GitHub being reachable. On the fresh Ubuntu installation, the minimum handoff is:
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/teamleaderleo/compute-node-bootstrap/main/scripts/host-report.sh
-bash host-report.sh
+sudo apt update
+sudo apt install -y openssh-server
+sudo systemctl enable --now ssh
+hostname -I
 ```
+
+Once SSH is proven, the scripts in [`scripts/`](scripts/) are optional conveniences for installing the wider baseline and collecting a machine report.
 
 See [remote access](docs/REMOTE_ACCESS.md) and [CI-node notes](docs/CI_NODE.md) after the first boot.
 
