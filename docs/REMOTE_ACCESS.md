@@ -1,55 +1,91 @@
 # Remote access
 
-For the REDMI Book, the preferred first remote-control path is **Tailscale SSH**, with ordinary OpenSSH installed as a fallback.
+For the REDMI Book, treat **reachability** and **SSH authentication** as separate layers.
 
-## Preferred path: Tailscale SSH
+The easiest first foothold is Tailscale because it avoids router port forwarding. After the first remote session, install a normal, explicitly named SSH key as the durable OpenSSH credential.
 
-Why this is attractive for a laptop behind a residential router:
-
-- no router port forwarding;
-- no public port 22;
-- no dynamic DNS;
-- the Tailscale address/hostname stays stable when the machine changes networks;
-- no manual SSH public-key distribution is required for Tailscale SSH;
-- the operator can authenticate the new node into the tailnet from their own browser.
+## 1. Initial foothold with Tailscale
 
 The family-facing install guide contains the exact copy/paste blocks.
 
-After Tailscale is installed on the node:
+On Linux, Tailscale runs as a system service even when nobody is logged in. Installing it with the command-line package does not add a required desktop tray workflow on the REDMI Book.
+
+The first setup can temporarily enable Tailscale SSH:
 
 ```bash
 sudo tailscale up --ssh --hostname=redmi-01
 ```
 
-That command prints a `https://login.tailscale.com/...` authentication URL. The person physically holding the node sends that URL privately to the operator. The operator opens it and authenticates the node into their tailnet.
+That prints a `https://login.tailscale.com/...` authentication URL. The person physically holding the node sends that URL privately to the operator; the operator authenticates the node into the tailnet.
 
-From the operator's machine, which must also be signed into the same tailnet:
+From a device on the same tailnet:
 
 ```bash
 ssh UBUNTU_USERNAME@redmi-01
 ```
 
-If the tailnet still uses Tailscale's default access-control policy, its default Tailscale SSH policy allows a user to connect to their own devices. If the tailnet ACL/policy has been customized, verify that it permits both network access and Tailscale SSH access to this node.
+Once that works, do the rest remotely.
 
-## Why there is still an OpenSSH server
+## 2. Add a conventional, explicitly named SSH key
 
-The install guide also installs `openssh-server` and enables it.
+Do **not** rely on the default filename `~/.ssh/id_ed25519`, because it may already exist.
 
-Tailscale SSH only intercepts SSH traffic arriving through the Tailscale address. Normal OpenSSH can still serve LAN or other deliberately configured paths, so keeping it installed gives us a second recovery mechanism.
-
-If we later decide to use ordinary SSH authentication, the operator can generate an Ed25519 key pair on their own machine:
+On the operator Mac, create a machine-specific key:
 
 ```bash
-ssh-keygen -t ed25519
+ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_redmi01 -C "redmi-01"
 ```
 
-Only the public key belongs on the REDMI Book. The private key never leaves the operator's machine. This can all be configured remotely after the first Tailscale SSH session, so there is no reason to make the physical installer handle SSH keys.
+This creates:
 
-## Mainland-China caveat
+```text
+~/.ssh/id_ed25519_redmi01       # private; keep on the operator Mac
+~/.ssh/id_ed25519_redmi01.pub   # public; install on redmi-01
+```
 
-The node is initially being configured in mainland China. Tailscale generally tries direct peer-to-peer connectivity and falls back to encrypted relay paths when direct connectivity is unavailable. Cross-border routing and the lack of an official mainland-China relay location can make latency or reliability less predictable than in many other regions.
+After the operator already has a shell on the REDMI Book, add the public key to the Ubuntu account's `~/.ssh/authorized_keys`, then verify a new login before disabling any password/Tailscale-SSH fallback.
 
-For interactive shell administration, a relayed connection can still be entirely adequate. Test the connection from the operator's real network before relying on it unattended.
+A convenient Mac SSH config is:
+
+```sshconfig
+Host redmi-01
+    HostName redmi-01
+    User YOUR_UBUNTU_USERNAME
+    IdentityFile ~/.ssh/id_ed25519_redmi01
+    IdentitiesOnly yes
+```
+
+Then ordinary use is simply:
+
+```bash
+ssh redmi-01
+```
+
+If we want Tailscale only for network reachability and normal OpenSSH for authentication, disable Tailscale SSH after the key login is proven:
+
+```bash
+sudo tailscale set --ssh=false
+```
+
+Tailscale can remain connected in the background solely to provide the private route to the machine.
+
+## 3. About the Tailscale icon on the operator Mac
+
+The standard macOS Tailscale app normally has a menu-bar icon while it is running. If that UI is annoying, it does not affect the REDMI Book: Linux Tailscale is a background system service.
+
+There is also a CLI-only macOS Tailscale variant, though Tailscale recommends it mainly for experienced administrators. Another option is simply to keep the normal Mac app and connect/disconnect it when remote access is needed.
+
+The GL.iNet router can independently join the tailnet for router-level routing; see [GL.iNet router → REDMI exit node](GLINET_EXIT_NODE.md).
+
+## 4. Why OpenSSH stays installed
+
+Normal OpenSSH gives us a second authentication/recovery path and works on the LAN even when Tailscale is unavailable.
+
+Do not expose public port 22 directly unless there is a deliberate reason and corresponding hardening.
+
+## 5. Mainland-China caveat
+
+The node is initially being configured in mainland China. Tailscale tries direct peer-to-peer connectivity and falls back to encrypted relays when direct connectivity is unavailable. Cross-border routing can make latency/reliability less predictable than elsewhere.
 
 Useful diagnostics:
 
@@ -58,11 +94,11 @@ tailscale status
 tailscale ping redmi-01
 ```
 
-They show whether the connection is direct or relayed.
+Test the real remote path while someone is still physically with the laptop.
 
-## Fallback: reverse SSH
+## 6. Fallback: reverse SSH
 
-If Tailscale is unavailable or performs poorly and the operator has a public server reachable from both sides, the node can maintain an outbound reverse SSH tunnel to that server. Because the node initiates the connection, this works through ordinary home NAT.
+If Tailscale is unavailable or performs poorly and the operator has a public server reachable from both sides, the node can maintain an outbound reverse SSH tunnel to that server.
 
 Conceptually:
 
@@ -76,15 +112,13 @@ Then, from the server:
 ssh -p 2222 LOCAL_USER@127.0.0.1
 ```
 
-A real deployment should use SSH keys, host-key checking, a dedicated account and a persistent systemd/autossh service.
+A real deployment should use SSH keys, host-key checking, a dedicated account and a persistent service.
 
-## GitHub Actions does not require inbound SSH
+## 7. GitHub Actions does not require inbound SSH
 
 A GitHub self-hosted Actions runner establishes outbound connections to GitHub. CI execution does not require a public IP address or inbound SSH.
 
-Remote shell access is for administration; runner connectivity is a separate outbound path.
-
-## After remote access is proven
+## 8. After remote access is proven
 
 Make the laptop behave like an unattended node:
 
