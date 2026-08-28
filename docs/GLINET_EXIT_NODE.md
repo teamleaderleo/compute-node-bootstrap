@@ -130,3 +130,27 @@ This is simpler when the goal is merely to make the Beryl-connected device use t
 GL.iNet explicitly warns that Tailscale can conflict with some other VPN/routing features because they modify the same routing/firewall state. OpenClash is a third-party OpenWrt proxy/routing package, so treat simultaneous OpenClash + Tailscale exit-node routing as something to **test deliberately** rather than assume will compose perfectly.
 
 Keep the existing profile as rollback while testing.
+
+## Actual Beryl 7 baseline (2026-08-28)
+
+The real Beryl 7 was enrolled before `redmi-01` existed. The observed baseline is:
+
+- GL-MT3600BE running GL.iNet firmware 4.9.0;
+- built-in Tailscale 1.92.5 online as `gl-mt3600be`;
+- no Custom Exit Node selected;
+- Run Exit Node off;
+- no WAN or LAN subnets advertised;
+- IP Masquerading off;
+- OpenClash/Mihomo still running with the same selected Bandwagon profile and modes;
+- ordinary LAN/admin access and internet access still working.
+
+This proves only that basic tailnet membership coexists with the current OpenClash setup. It does not prove the future Tailscale exit-node route. Keep the Bandwagon/OpenClash path unchanged until `redmi-01` is online and the full path has passed the non-work-device test.
+
+The router's Tailscale enrollment banner was not reliable during setup: it appeared once and then disappeared, while the daemon still needed authentication. LuCI's local Web Console provided the one-time login URL and the final daemon status. Never record that login URL. The successful final checks were `BackendState: Running`, the router online in the Tailscale device list, an assigned Tailscale IP, an empty exit-node ID and no advertised routes.
+
+When `redmi-01` arrives, record the current OpenClash state and public egress again before changing the Beryl. Then select `redmi-01` only after the REDMI has advertised the exit-node routes and they have been approved in Tailscale. Test with a non-work device first and confirm:
+
+1. the test device's public IP matches the REDMI connection;
+2. DNS resolution and leak behavior are acceptable;
+3. the corporate VPN, video calls and other work-sensitive traffic behave normally;
+4. disabling Custom Exit Node immediately restores the existing OpenClash/Bandwagon path.
