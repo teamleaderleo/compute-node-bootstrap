@@ -7,6 +7,7 @@ if [[ ${EUID} -ne 0 ]]; then
 fi
 
 operator_user=${SUDO_USER:-leo}
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 
 printf '== Finish Ubuntu package updates ==\n'
 apt update
@@ -112,6 +113,9 @@ chown "${operator_user}:${operator_user}" "/home/${operator_user}/.config/autost
 if [[ -S /run/user/1000/bus ]]; then
   sudo -u "${operator_user}" env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus /usr/local/sbin/big-red-session-settings
 fi
+
+printf '\n== Install the bounded big-red diagnostic ==\n'
+install -o root -g root -m 0755 "${script_dir}/big-red-connectivity-check" /usr/local/bin/big-red-connectivity-check
 
 printf '\n== Enable Linux forwarding for the future Tailscale exit node ==\n'
 cat >/etc/sysctl.d/99-tailscale.conf <<'EOF'
