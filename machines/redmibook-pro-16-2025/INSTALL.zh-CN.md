@@ -167,7 +167,13 @@ https://ubuntu.com/desktop/docs/en/26.04/reference/intel-rst-during-ubuntu-insta
 redmi-01
 ```
 
-创建普通管理员账号和强密码，保留 **Require my password to log in**。
+Ubuntu 用户名使用：
+
+```text
+leo
+```
+
+创建普通管理员账号和本地密码，保留 **Require my password to log in**。
 
 把 **用户名** 发给远程操作方。
 
@@ -244,12 +250,12 @@ printf 'Tailscale IP: '; tailscale ip -4
 远程操作方自己的电脑也登录同一个 Tailscale 网络以后，可以测试：
 
 ```bash
-ssh UBUNTU_USERNAME@redmi-01
+ssh leo@redmi-01
 ```
 
 使用 Tailscale SSH 时，这条连接**不需要另外生成和复制 SSH 公钥/私钥**；Tailscale 负责这条 tailnet 内 SSH 连接的身份认证和授权。
 
-从远程操作方**实际所在的网络**成功登录以后，现场必须完成的工作就结束了。后续 CI 工具、电池设置、性能测试等都可以远程完成。
+从远程操作方**实际所在的网络**成功登录以后，现场必须完成的工作就结束了。拿着电脑的人可以停下，远程操作方继续执行[接手后的 TODO](../../docs/REDMI_HANDOFF_TODO.md)。
 
 > 中国大陆到境外的网络路由可能让 Tailscale 比其他地区更慢或者偶尔不稳定，所以同时安装普通 OpenSSH，把 Tailscale 当成首选远程路径，而不是唯一的恢复路径。机器长期无人值守以前，一定要实际测试远程连接。
 

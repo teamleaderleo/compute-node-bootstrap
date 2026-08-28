@@ -46,6 +46,7 @@ The [`scripts/`](scripts/) directory is only for the remote operator after hando
 
 ## After first boot
 
+- [Earliest remote handoff and operator TODO](docs/REDMI_HANDOFF_TODO.md)
 - [Remote access and named SSH key](docs/REMOTE_ACCESS.md)
 - [Beryl 7 pre-departure checklist](docs/BERYL7_BEFORE_LEAVING.md)
 - [Beryl 7 → REDMI exit node](docs/GLINET_EXIT_NODE.md)

@@ -16,12 +16,12 @@ The first setup can temporarily enable Tailscale SSH:
 sudo tailscale up --ssh --hostname=redmi-01
 ```
 
-That prints a `https://login.tailscale.com/...` authentication URL. The person physically holding the node sends that URL privately to the operator; the operator authenticates the node into the tailnet.
+That prints a `https://login.tailscale.com/...` authentication URL. The person physically holding the node sends that URL to the operator; the operator authenticates the node into the tailnet.
 
 From a device on the same tailnet:
 
 ```bash
-ssh UBUNTU_USERNAME@redmi-01
+ssh leo@redmi-01
 ```
 
 Once that works, do the rest remotely.
@@ -50,7 +50,7 @@ A convenient Mac SSH config is:
 ```sshconfig
 Host redmi-01
     HostName redmi-01
-    User YOUR_UBUNTU_USERNAME
+    User leo
     IdentityFile ~/.ssh/id_ed25519_redmi01
     IdentitiesOnly yes
 ```

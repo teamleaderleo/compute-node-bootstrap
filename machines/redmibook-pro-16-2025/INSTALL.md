@@ -161,7 +161,13 @@ Recommended computer name:
 redmi-01
 ```
 
-Create a normal admin user and a strong local password. Keep **Require my password to log in** enabled.
+Use this Ubuntu username:
+
+```text
+leo
+```
+
+Create a normal admin user and a local password. Keep **Require my password to log in** enabled.
 
 Send the **username** to the remote operator.
 
@@ -238,12 +244,12 @@ Send the output to the operator.
 The remote operator, from a computer that is also signed into the same Tailscale network, can now try:
 
 ```bash
-ssh UBUNTU_USERNAME@redmi-01
+ssh leo@redmi-01
 ```
 
 With Tailscale SSH, no separately generated SSH key pair is required for this connection. Tailscale handles the SSH identity/authorization for traffic arriving over the tailnet.
 
-Once that succeeds **from the operator's actual remote network**, the required physical setup is complete. The operator can install CI tooling, configure power/battery behavior, benchmark the machine, and manage it remotely.
+Once that succeeds **from the operator's actual remote network**, the required physical setup is complete. The person holding the laptop can stop; the operator follows the [post-handoff TODO](../../docs/REDMI_HANDOFF_TODO.md).
 
 > Mainland-China cross-border connectivity can make Tailscale slower or less reliable than elsewhere. We install normal OpenSSH too so Tailscale is a preferred path rather than the sole recovery mechanism. Test the real remote connection before leaving the node unattended.
 
