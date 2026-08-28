@@ -13,7 +13,7 @@ On Linux, Tailscale runs as a system service even when nobody is logged in. Inst
 The first setup can temporarily enable Tailscale SSH:
 
 ```bash
-sudo tailscale up --ssh --hostname=redmi-01
+sudo tailscale up --ssh --hostname=big-red
 ```
 
 That prints a `https://login.tailscale.com/...` authentication URL. The person physically holding the node sends that URL to the operator; the operator authenticates the node into the tailnet.
@@ -21,7 +21,7 @@ That prints a `https://login.tailscale.com/...` authentication URL. The person p
 From a device on the same tailnet:
 
 ```bash
-ssh leo@redmi-01
+ssh leo@big-red
 ```
 
 Once that works, do the rest remotely.
@@ -33,32 +33,33 @@ Do **not** rely on the default filename `~/.ssh/id_ed25519`, because it may alre
 On the operator Mac, create a machine-specific key:
 
 ```bash
-ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_redmi01 -C "redmi-01"
+ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_big_red -C "big-red"
 ```
 
 This creates:
 
 ```text
-~/.ssh/id_ed25519_redmi01       # private; keep on the operator Mac
-~/.ssh/id_ed25519_redmi01.pub   # public; install on redmi-01
+~/.ssh/id_ed25519_big_red       # private; keep on the operator Mac
+~/.ssh/id_ed25519_big_red.pub   # public; install on big-red
 ```
 
 After the operator already has a shell on the REDMI Book, add the public key to the Ubuntu account's `~/.ssh/authorized_keys`, then verify a new login before disabling any password/Tailscale-SSH fallback.
 
-A convenient Mac SSH config is:
+A convenient Mac SSH config is below. `tailscale nc` deliberately bypasses a competing macOS `100.64.0.0/10` route installed by Stash.
 
 ```sshconfig
-Host redmi-01
-    HostName redmi-01
+Host big-red
+    HostName big-red
     User leo
-    IdentityFile ~/.ssh/id_ed25519_redmi01
+    IdentityFile ~/.ssh/id_ed25519_big_red
     IdentitiesOnly yes
+    ProxyCommand /usr/local/bin/tailscale nc %h %p
 ```
 
 Then ordinary use is simply:
 
 ```bash
-ssh redmi-01
+ssh big-red
 ```
 
 If we want Tailscale only for network reachability and normal OpenSSH for authentication, disable Tailscale SSH after the key login is proven:
@@ -91,7 +92,7 @@ Useful diagnostics:
 
 ```bash
 tailscale status
-tailscale ping redmi-01
+tailscale ping big-red
 ```
 
 Test the real remote path while someone is still physically with the laptop.
@@ -118,13 +119,8 @@ A real deployment should use SSH keys, host-key checking, a dedicated account an
 
 A GitHub self-hosted Actions runner establishes outbound connections to GitHub. CI execution does not require a public IP address or inbound SSH.
 
-## 8. After remote access is proven
+## 8. Actual `big-red` result
 
-Make the laptop behave like an unattended node:
+The completed machine uses conventional OpenSSH through Tailscale, has Tailscale SSH disabled, does not suspend, disables Wi-Fi power saving and permits passwordless remote administration. See [`BIG_RED_STATE.md`](BIG_RED_STATE.md) for the exact observed state and recovery commands.
 
-- prevent suspend while connected to AC power;
-- decide what closing the lid should do;
-- configure a 70–80% battery charge ceiling;
-- enable automatic security updates;
-- prefer wired Ethernet at its long-term location when practical;
-- verify remote recovery after a reboot before relying on the machine unattended.
+No supported battery charge-threshold interface was exposed by this laptop's installed firmware, so no charge ceiling was guessed or forced.

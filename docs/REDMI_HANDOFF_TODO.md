@@ -1,78 +1,37 @@
-# REDMI bootstrap and Codex takeover
+# `big-red` bootstrap and remote takeover
 
-## Preferred plan: owner and Codex together in person
+The in-person handoff is complete. Ubuntu was installed by the owner and Codex took over after the first OpenSSH login.
 
-The owner will physically hold the REDMI Book and work through the setup with Codex. Mom does not need to prepare Windows, create USB media or install Ubuntu.
+## Finished on 2026-08-28
 
-1. Connect the 128 GB USB stick to the Mac or the REDMI Book.
-2. Let Codex identify the exact USB device before writing the Ubuntu image.
-3. Boot the REDMI Book into Windows once and inspect the actual hardware and firmware state.
-4. Create the Ubuntu USB using the illustrated guide.
-5. Boot **Try Ubuntu** and test the hardware.
-6. Install Ubuntu with username `leo` and computer name `redmi-01`.
-7. Connect Ubuntu to the residential Wi-Fi and join Tailscale.
+- [x] Erased the factory Windows installation and installed Ubuntu 26.04 LTS.
+- [x] Created Ubuntu user `leo` and hostname `big-red`.
+- [x] Recorded the actual hardware, firmware, storage, battery and network state.
+- [x] Installed OpenSSH, development tools, automatic updates and the repository baseline packages.
+- [x] Set `Asia/Shanghai`, enabled NTP and enabled automatic login.
+- [x] Installed a dedicated conventional SSH key and verified both LAN and Tailscale logins.
+- [x] Joined `big-red` to the existing tailnet and disabled key expiry.
+- [x] Disabled Tailscale SSH after conventional OpenSSH was proven; this avoids recurring tailnet web checks.
+- [x] Enabled IP forwarding, advertised an exit node and approved it in the Tailscale admin console.
+- [x] Disabled GNOME idle dimming, ambient brightness and automatic suspend.
+- [x] Masked Linux sleep, suspend and hibernate targets and made lid close a no-op.
+- [x] Disabled Wi-Fi power saving and installed Tailscale's recommended UDP GRO forwarding hook.
+- [x] Enabled passwordless `sudo` for `leo` so future remote maintenance needs no physical approval.
+- [x] Installed Codex CLI and the preview Linux ChatGPT/Codex desktop app from OpenAI's official packages.
+- [x] Rebooted twice and verified that networking, Tailscale, OpenSSH, auto-login, no-sleep policy and the short remote alias return automatically.
 
-From the first Windows screen onward, the owner can show Codex photos/screenshots and follow one step at a time. The point where Codex can operate the REDMI directly, instead of guiding the local screen, is the first successful shell from the Mac:
+The actual state and recovery commands are in [`BIG_RED_STATE.md`](BIG_RED_STATE.md).
 
-```bash
-ssh leo@redmi-01
-```
+## Still deliberately postponed
 
-Ubuntu does not need to be fully configured before this shell works. Everything after it can be completed remotely.
+- [ ] Move `big-red` to its long-term residential Wi-Fi and confirm Tailscale reconnects.
+- [ ] On the Beryl 7, select `big-red` as Custom Exit Node only after testing the exit path with a non-work device.
+- [ ] Verify DNS and public egress through that path.
+- [ ] Disable Custom Exit Node and confirm the existing OpenClash/Bandwagon path returns immediately.
+- [ ] Decide whether a GitHub Actions runner or other workload service is required.
 
-## Standard names
+No battery-charge threshold was set because Ubuntu exposes no supported charge-limit control for the installed battery/firmware combination. Keep the OEM charger attached for unattended use.
 
-- Ubuntu username: `leo`
-- computer name: `redmi-01`
-- first remote connection: Tailscale SSH
+## If the machine becomes unreachable
 
-## Before the REDMI arrives
-
-- [x] Obtain a USB stick for Ubuntu: a 128 GB stick has been purchased.
-- [ ] Decide whether factory Windows recovery is wanted; if yes, obtain a second 32 GB or larger USB stick. Otherwise the single 128 GB stick is enough.
-- [ ] Have the REDMI Book, charger, USB stick and Mac together.
-
-The operator Mac is already prepared: Tailscale and Stash can run together, the Mac does not accept tailnet DNS or subnet routes, and no exit node is selected.
-
-## Earliest remote-shell handoff
-
-1. Follow the illustrated [中文](../machines/redmibook-pro-16-2025/INSTALL.zh-CN.md) or [English](../machines/redmibook-pro-16-2025/INSTALL.md) guide.
-2. Install Ubuntu with username `leo` and computer name `redmi-01`.
-3. Connect the installed Ubuntu system to the residential Wi-Fi.
-4. Paste the guide's OpenSSH and Tailscale command block into Terminal.
-5. Run `sudo tailscale up --ssh --hostname=redmi-01`.
-6. Send the displayed Tailscale authentication URL to the operator.
-7. Confirm that `ssh leo@redmi-01` works from the Mac.
-
-That is the end of the setup that requires the REDMI's keyboard and screen.
-
-## What the operator/Codex does at first contact
-
-- [ ] Open the Tailscale authentication URL and add `redmi-01` to the existing tailnet.
-- [ ] Confirm `redmi-01` is online in the Tailscale machine list.
-- [ ] Disable Tailscale key expiry for `redmi-01`.
-- [ ] Connect with `ssh leo@redmi-01`.
-- [ ] Confirm that direct remote operation has begun.
-
-## What Codex handles after the handoff
-
-- [ ] Record the actual model, firmware, CPU, memory, storage, network and kernel state.
-- [ ] Install Ubuntu updates and the baseline packages from this repository.
-- [ ] Confirm time synchronization and the `Asia/Shanghai` timezone.
-- [ ] Configure automatic security updates.
-- [ ] Add the operator's conventional `redmi-01` SSH key and verify a second remote login path.
-- [ ] Configure AC-power, lid-close and suspend behavior for unattended operation.
-- [ ] Set a supported battery charge ceiling after inspecting the hardware's actual Linux interface.
-- [ ] Enable Linux IP forwarding and advertise `redmi-01` as a Tailscale exit node.
-- [ ] Approve the exit-node routes in Tailscale.
-- [ ] Reboot once and verify that networking, Tailscale and remote access return automatically.
-- [ ] Select `redmi-01` as the Beryl's Custom Exit Node only after the REDMI side is healthy.
-- [ ] Test the Beryl path with a non-work device, including DNS and public egress.
-- [ ] Verify that disabling Custom Exit Node restores the existing OpenClash/Bandwagon path.
-- [ ] Update the repository with the actual REDMI and end-to-end observations.
-
-CI runner registration and workload-specific tooling come after the residential exit-node path and remote recovery have been proven.
-
-## If Mom has to do it instead
-
-The same illustrated guide still supports a video-call handoff. Her final task would be sending the Tailscale authentication URL and waiting until the operator confirms `ssh leo@redmi-01` works. This is now the fallback rather than the primary plan.
+Normal operation should not require anyone locally: it does not sleep, Tailscale and SSH start at boot, and `leo` can administer it remotely. If power was lost long enough for the battery to empty or the machine was shut down, someone must press the physical Power button. No reliable remote power-on mechanism was exposed by the current Wi-Fi or firmware.

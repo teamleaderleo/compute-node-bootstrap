@@ -164,7 +164,7 @@ https://ubuntu.com/desktop/docs/en/26.04/reference/intel-rst-during-ubuntu-insta
 建议电脑名：
 
 ```text
-redmi-01
+big-red
 ```
 
 Ubuntu 用户名使用：
@@ -225,7 +225,7 @@ curl -fsSL https://tailscale.com/install.sh | sh
 复制并运行：
 
 ```bash
-sudo tailscale up --ssh --hostname=redmi-01
+sudo tailscale up --ssh --hostname=big-red
 ```
 
 命令会显示一个以 `https://login.tailscale.com/...` 开头的网址。
@@ -250,7 +250,7 @@ printf 'Tailscale IP: '; tailscale ip -4
 远程操作方自己的电脑也登录同一个 Tailscale 网络以后，可以测试：
 
 ```bash
-ssh leo@redmi-01
+ssh leo@big-red
 ```
 
 使用 Tailscale SSH 时，这条连接**不需要另外生成和复制 SSH 公钥/私钥**；Tailscale 负责这条 tailnet 内 SSH 连接的身份认证和授权。

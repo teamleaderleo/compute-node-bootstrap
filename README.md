@@ -40,7 +40,7 @@ The person physically installing the machine should never have to download, insp
 
 Every command required from them appears directly in the machine's Markdown installation guide in fenced code blocks with GitHub's normal **Copy** button.
 
-The first remote foothold uses Tailscale because it avoids router port forwarding and public SSH exposure. After remote access is proven, the operator can install a conventional, explicitly named SSH key (`~/.ssh/id_ed25519_redmi01`) and use ordinary OpenSSH authentication.
+The first remote foothold uses Tailscale because it avoids router port forwarding and public SSH exposure. After remote access is proven, the operator can install a conventional, explicitly named SSH key (`~/.ssh/id_ed25519_big_red`) and use ordinary OpenSSH authentication.
 
 The [`scripts/`](scripts/) directory is only for the remote operator after handoff.
 
@@ -48,6 +48,7 @@ The [`scripts/`](scripts/) directory is only for the remote operator after hando
 
 - [In-person REDMI bootstrap and Codex takeover TODO](docs/REDMI_HANDOFF_TODO.md)
 - [Remote access and named SSH key](docs/REMOTE_ACCESS.md)
+- [`big-red` observed state and recovery](docs/BIG_RED_STATE.md)
 - [Beryl 7 pre-departure checklist](docs/BERYL7_BEFORE_LEAVING.md)
 - [Beryl 7 → REDMI exit node](docs/GLINET_EXIT_NODE.md)
 - [CI-node notes](docs/CI_NODE.md)

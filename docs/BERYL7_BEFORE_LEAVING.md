@@ -113,11 +113,11 @@ Use the illustrated [English](../machines/redmibook-pro-16-2025/INSTALL.md) or [
 
 Later:
 
-1. install Ubuntu 26.04 on `redmi-01`;
-2. join `redmi-01` to the same tailnet;
-3. advertise `redmi-01` as an exit node;
+1. install Ubuntu 26.04 on `big-red`;
+2. join `big-red` to the same tailnet;
+3. advertise `big-red` as an exit node;
 4. approve it in Tailscale;
-5. on the Beryl 7, enable **Custom Exit Nodes** and choose `redmi-01`;
+5. on the Beryl 7, enable **Custom Exit Nodes** and choose `big-red`;
 6. test with a non-work device first;
 7. only after that, decide whether to route the work computer through the REDMI.
 

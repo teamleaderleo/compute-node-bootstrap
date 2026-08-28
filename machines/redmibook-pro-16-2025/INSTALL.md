@@ -158,7 +158,7 @@ https://ubuntu.com/desktop/docs/en/26.04/reference/intel-rst-during-ubuntu-insta
 Recommended computer name:
 
 ```text
-redmi-01
+big-red
 ```
 
 Use this Ubuntu username:
@@ -219,7 +219,7 @@ If the Tailscale download/install command fails, **stop and call**. Ordinary Ope
 Copy and run:
 
 ```bash
-sudo tailscale up --ssh --hostname=redmi-01
+sudo tailscale up --ssh --hostname=big-red
 ```
 
 The command prints a web address beginning with `https://login.tailscale.com/...`.
@@ -244,7 +244,7 @@ Send the output to the operator.
 The remote operator, from a computer that is also signed into the same Tailscale network, can now try:
 
 ```bash
-ssh leo@redmi-01
+ssh leo@big-red
 ```
 
 With Tailscale SSH, no separately generated SSH key pair is required for this connection. Tailscale handles the SSH identity/authorization for traffic arriving over the tailnet.

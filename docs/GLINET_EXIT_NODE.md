@@ -11,7 +11,7 @@ work laptop
     ↓ Wi-Fi / Ethernet
 Beryl 7 (GL-MT3600BE)
     ↓ Tailscale
-redmi-01 (exit node)
+big-red (exit node)
     ↓
 internet
 ```
@@ -30,7 +30,7 @@ If the current setup uses a router-side YAML/proxy profile pointing at a rented 
 
 The REDMI Book becomes the exit node, and the Beryl 7 chooses it as a **Custom Exit Node**. Devices connected to the router then appear to the public internet as coming from the REDMI Book's internet connection/location.
 
-Important: the public exit location is wherever `redmi-01` is physically connected at that moment. If it is in China, traffic exits in China; if it later lives in Vancouver, traffic exits there.
+Important: the public exit location is wherever `big-red` is physically connected at that moment. If it is in China, traffic exits in China; if it later lives in Vancouver, traffic exits there.
 
 ## GL.iNet support
 
@@ -44,7 +44,7 @@ https://docs.gl-inet.com/router/en/4/interface_guide/tailscale/
 
 First complete the illustrated [English](../machines/redmibook-pro-16-2025/INSTALL.md) or [中文](../machines/redmibook-pro-16-2025/INSTALL.zh-CN.md) REDMI Book handoff guide.
 
-After Tailscale is already working on `redmi-01`, enable Linux IP forwarding:
+After Tailscale is already working on `big-red`, enable Linux IP forwarding:
 
 ```bash
 printf '%s\n' \
@@ -60,7 +60,7 @@ Then advertise the REDMI Book as an exit node:
 sudo tailscale set --advertise-exit-node
 ```
 
-In the Tailscale admin console, approve `redmi-01` for **Use as exit node**.
+In the Tailscale admin console, approve `big-red` for **Use as exit node**.
 
 Official reference:
 
@@ -71,10 +71,10 @@ https://tailscale.com/docs/features/exit-nodes/how-to/setup
 In the router web admin UI:
 
 1. Open **APPLICATIONS → Tailscale**.
-2. Confirm the router is joined to the same tailnet as `redmi-01`.
+2. Confirm the router is joined to the same tailnet as `big-red`.
 3. Enable **Custom Exit Nodes**.
 4. Refresh the exit-node list.
-5. Select `redmi-01` / its Tailscale IP.
+5. Select `big-red` / its Tailscale IP.
 6. Apply.
 
 GL.iNet's current docs say devices connected to the router then route their public internet traffic through the chosen exit node.
@@ -87,7 +87,7 @@ Nothing is installed on the work computer.
 
 It simply connects to the Beryl 7. Depending on the router's policy configuration, we can route:
 
-- every connected device through `redmi-01`;
+- every connected device through `big-red`;
 - only the work computer;
 - selected traffic through the REDMI while leaving other traffic on the ordinary route.
 
@@ -119,9 +119,9 @@ This is simpler when the goal is merely to make the Beryl-connected device use t
 
 1. Keep the current Bandwagon/OpenClash profile working.
 2. Join the Beryl 7 to the tailnet without changing its current route.
-3. Bring `redmi-01` into the same tailnet.
-4. Advertise/approve `redmi-01` as an exit node.
-5. Select `redmi-01` as the Beryl 7 Custom Exit Node.
+3. Bring `big-red` into the same tailnet.
+4. Advertise/approve `big-red` as an exit node.
+5. Select `big-red` as the Beryl 7 Custom Exit Node.
 6. Connect a non-work test device to the router first.
 7. Verify its public IP matches the REDMI Book's connection.
 8. Test DNS, corporate VPN, video calls and other work-sensitive traffic.
@@ -135,7 +135,7 @@ Keep the existing profile as rollback while testing.
 
 ## Actual Beryl 7 baseline (2026-08-28)
 
-The real Beryl 7 was enrolled before `redmi-01` existed. The observed baseline is:
+The real Beryl 7 was enrolled before `big-red` existed. The observed baseline is:
 
 - GL-MT3600BE running GL.iNet firmware 4.9.0;
 - built-in Tailscale 1.92.5 online as `gl-mt3600be`;
@@ -146,11 +146,11 @@ The real Beryl 7 was enrolled before `redmi-01` existed. The observed baseline i
 - OpenClash/Mihomo still running with the same selected Bandwagon profile and modes;
 - ordinary LAN/admin access and internet access still working.
 
-This proves only that basic tailnet membership coexists with the current OpenClash setup. It does not prove the future Tailscale exit-node route. Keep the Bandwagon/OpenClash path unchanged until `redmi-01` is online and the full path has passed the non-work-device test.
+This proves only that basic tailnet membership coexists with the current OpenClash setup. It does not prove the future Tailscale exit-node route. Keep the Bandwagon/OpenClash path unchanged until `big-red` is online and the full path has passed the non-work-device test.
 
 The router's Tailscale enrollment banner was not reliable during setup: it appeared once and then disappeared, while the daemon still needed authentication. LuCI's local Web Console provided the one-time login URL and the final daemon status. Never record that login URL. The successful final checks were `BackendState: Running`, the router online in the Tailscale device list, an assigned Tailscale IP, an empty exit-node ID and no advertised routes.
 
-When `redmi-01` arrives, record the current OpenClash state and public egress again before changing the Beryl. Then select `redmi-01` only after the REDMI has advertised the exit-node routes and they have been approved in Tailscale. Test with a non-work device first and confirm:
+When `big-red` arrives, record the current OpenClash state and public egress again before changing the Beryl. Then select `big-red` only after the REDMI has advertised the exit-node routes and they have been approved in Tailscale. Test with a non-work device first and confirm:
 
 1. the test device's public IP matches the REDMI connection;
 2. DNS resolution and leak behavior are acceptable;
