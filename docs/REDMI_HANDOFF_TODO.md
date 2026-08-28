@@ -1,12 +1,24 @@
-# REDMI handoff: the earliest point Codex can take over
+# REDMI bootstrap and Codex takeover
 
-The physical handoff is complete when the operator successfully reaches this shell from the Mac:
+## Preferred plan: owner and Codex together in person
+
+The owner will physically hold the REDMI Book and work through the setup with Codex. Mom does not need to prepare Windows, create USB media or install Ubuntu.
+
+1. Connect the 128 GB USB stick to the Mac or the REDMI Book.
+2. Let Codex identify the exact USB device before writing the Ubuntu image.
+3. Boot the REDMI Book into Windows once and inspect the actual hardware and firmware state.
+4. Create the Ubuntu USB using the illustrated guide.
+5. Boot **Try Ubuntu** and test the hardware.
+6. Install Ubuntu with username `leo` and computer name `redmi-01`.
+7. Connect Ubuntu to the residential Wi-Fi and join Tailscale.
+
+From the first Windows screen onward, the owner can show Codex photos/screenshots and follow one step at a time. The point where Codex can operate the REDMI directly, instead of guiding the local screen, is the first successful shell from the Mac:
 
 ```bash
 ssh leo@redmi-01
 ```
 
-At that point, the person holding the REDMI Book can walk away. Ubuntu does not need to be fully configured first.
+Ubuntu does not need to be fully configured before this shell works. Everything after it can be completed remotely.
 
 ## Standard names
 
@@ -16,14 +28,13 @@ At that point, the person holding the REDMI Book can walk away. Ubuntu does not 
 
 ## Before the REDMI arrives
 
-- [ ] Obtain a 16 GB or larger USB stick for Ubuntu.
-- [ ] Obtain a 32 GB or larger USB stick if a factory Windows recovery drive is wanted.
-- [ ] Keep the [中文安装指南](../machines/redmibook-pro-16-2025/INSTALL.zh-CN.md) ready to send.
-- [ ] Be available to open the Tailscale authentication link when the laptop reaches that step.
+- [x] Obtain a USB stick for Ubuntu: a 128 GB stick has been purchased.
+- [ ] Decide whether factory Windows recovery is wanted; if yes, obtain a second 32 GB or larger USB stick. Otherwise the single 128 GB stick is enough.
+- [ ] Have the REDMI Book, charger, USB stick and Mac together.
 
 The operator Mac is already prepared: Tailscale and Stash can run together, the Mac does not accept tailnet DNS or subnet routes, and no exit node is selected.
 
-## What the person holding the laptop does
+## Earliest remote-shell handoff
 
 1. Follow the illustrated [中文](../machines/redmibook-pro-16-2025/INSTALL.zh-CN.md) or [English](../machines/redmibook-pro-16-2025/INSTALL.md) guide.
 2. Install Ubuntu with username `leo` and computer name `redmi-01`.
@@ -31,9 +42,9 @@ The operator Mac is already prepared: Tailscale and Stash can run together, the 
 4. Paste the guide's OpenSSH and Tailscale command block into Terminal.
 5. Run `sudo tailscale up --ssh --hostname=redmi-01`.
 6. Send the displayed Tailscale authentication URL to the operator.
-7. Stay near the laptop until the operator confirms that `ssh leo@redmi-01` works.
+7. Confirm that `ssh leo@redmi-01` works from the Mac.
 
-That is the end of the physical setup.
+That is the end of the setup that requires the REDMI's keyboard and screen.
 
 ## What the operator/Codex does at first contact
 
@@ -41,7 +52,7 @@ That is the end of the physical setup.
 - [ ] Confirm `redmi-01` is online in the Tailscale machine list.
 - [ ] Disable Tailscale key expiry for `redmi-01`.
 - [ ] Connect with `ssh leo@redmi-01`.
-- [ ] Tell the person holding the laptop that the handoff is complete.
+- [ ] Confirm that direct remote operation has begun.
 
 ## What Codex handles after the handoff
 
@@ -62,6 +73,6 @@ That is the end of the physical setup.
 
 CI runner registration and workload-specific tooling come after the residential exit-node path and remote recovery have been proven.
 
-## The part that cannot be handed off earlier
+## If Mom has to do it instead
 
-Someone physically present must power on the laptop, boot the USB, operate the Ubuntu installer and connect the installed system to Wi-Fi. Before Ubuntu and Tailscale are online, there is no remote shell for Codex to use.
+The same illustrated guide still supports a video-call handoff. Her final task would be sending the Tailscale authentication URL and waiting until the operator confirms `ssh leo@redmi-01` works. This is now the fallback rather than the primary plan.

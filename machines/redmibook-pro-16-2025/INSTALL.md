@@ -10,9 +10,9 @@ If a screen looks materially different from this guide, **stop, take a photo, an
 
 - the REDMI Book and charger;
 - one **16 GB or larger USB stick** for Ubuntu;
-- one **32 GB or larger USB stick** for Windows recovery;
+- optionally, one **32 GB or larger USB stick** for factory Windows recovery;
 - internet access;
-- a video/voice call with the remote operator.
+- the Mac or another device for following this guide with Codex.
 
 Use the new REDMI Book's own Windows installation to prepare both USB drives. The work ThinkPads and iPad are not needed for this.
 
@@ -25,7 +25,7 @@ Boot Windows once and check:
 - the internal SSD is about **1 TB**;
 - the charger works.
 
-### Make the Windows recovery USB
+### Optional: make the Windows recovery USB
 
 1. Insert the 32 GB USB stick.
 2. Open Start and search for **Recovery Drive**.
@@ -193,7 +193,7 @@ Click **Restart now**. When prompted, remove the USB stick and press Enter.
 
 Log into Ubuntu and connect it to the internet.
 
-## 10. Give the remote operator control
+## 10. Give Codex a remote shell
 
 The preferred handoff is **Tailscale SSH**. This avoids router changes, public SSH ports, dynamic DNS, and manually copying SSH public keys.
 
