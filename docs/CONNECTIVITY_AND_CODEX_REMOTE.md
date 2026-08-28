@@ -116,6 +116,11 @@ A `controlplane.tailscale.com` answer in `198.18.0.0/15` means the router
 exception is missing or was not applied. A `192.200.x.x` answer was observed
 after the fix.
 
+The Tailscale health note that some peers advertise routes while
+`--accept-routes` is false is intentional on `big-red`: the Beryl advertises
+`192.168.8.0/24`, but `big-red` is already physically attached to that same
+LAN. Do not accept the duplicate route while the machine is on the Beryl LAN.
+
 ## MacBook behavior
 
 At the time of the final check, `leos-macbook-air` was offline and did not
@@ -134,6 +139,9 @@ Host big-red
     ServerAliveInterval 30
     ServerAliveCountMax 4
 ```
+
+On the same Beryl LAN, `ssh leo@big-red.local` currently resolves through
+Avahi/mDNS to `192.168.8.107`; use the Tailscale alias as the durable remote path.
 
 The `ProxyCommand` bypasses Stash's competing `100.64.0.0/10` route. On the
 Mac, keep Tailscale's `accept-dns` and `accept-routes` off while Stash owns
