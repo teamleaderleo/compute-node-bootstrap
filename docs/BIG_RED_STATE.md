@@ -72,7 +72,7 @@ The expected results are `static`, `static`, `masked`, `masked`: suspend is avai
 
 Rollback to the former always-awake node policy is explicit but no longer recommended for family use: change the three `HandleLidSwitch*` values in `/etc/systemd/logind.conf.d/60-unattended-node.conf` to `ignore`, mask `sleep.target` and `suspend.target`, then run `sudo systemctl reload systemd-logind`. Reapply the tracked configuration and unmask those two targets to restore the current family-safe policy.
 
-GNOME LocalSearch previously indexed all of `$HOME`, reached Go module caches, misclassified `*.mod` files as audio, and later segfaulted once. The service restarted successfully, but that work has no value for Quarry/Glaeda development. Restore the distribution-wide-home search scope, if ever wanted, with:
+GNOME LocalSearch previously indexed all of `$HOME`, reached Go module caches, misclassified `*.mod` files as audio, and later segfaulted once. The service restarted successfully, but that work has no value for Quarry/Glaeda development. After narrowing the scope, its supported `reset --filesystem` operation rebuilt an idle index containing only 12 files and 20 folders; no source file was touched. Restore the distribution-wide-home search scope, if ever wanted, with:
 
 ```bash
 gsettings reset org.freedesktop.Tracker3.Miner.Files index-recursive-directories
