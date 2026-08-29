@@ -41,7 +41,7 @@ https://learn.chatgpt.com/docs/remote-connections
   `scripts/big-red-connectivity-check`, prints a bounded, credential-free
   health snapshot. It summarizes services, sleep targets, effective GNOME
   screen/idle behavior, effective logind lid actions, Tailscale reachability,
-  DNS Fake-IP classification, Chrony, capacity/power, Bluetooth noise, and the
+  DNS Fake-IP classification, Chrony, capacity/thermal/power state, Bluetooth noise, and the
   ChatGPT launcher, desktop, Codex remote-control process, and private local
   control-listener state without printing process arguments, socket paths, or
   full network addresses. When
@@ -50,6 +50,16 @@ https://learn.chatgpt.com/docs/remote-connections
   count, and SoC temperature. That optional probe is key-only and capped at
   seven seconds; it reports `router_ssh=unavailable` instead of prompting when
   the router or identity is unavailable.
+
+The host-health section reads CPU-package and root-NVMe temperature/critical
+thresholds from hwmon. When the root filesystem is directly backed by an NVMe
+namespace, it also makes one five-second, noninteractive, read-only SMART-log
+request and prints only health counters: critical warnings, spare, wear,
+media/error-log counts, unsafe shutdowns, and time above warning/critical
+temperature. It never prints the drive model, serial number, firmware, device
+path, namespace size, or raw SMART payload. `nvme_smart=unavailable` means the
+bounded read was unavailable or failed validation; it is not itself a drive
+failure.
 
 The ChatGPT user service was enabled without restarting the running desktop app.
 It takes ownership on the next graphical login or reboot. During the current
@@ -174,6 +184,14 @@ button left `interactive` for GNOME. The three effective lid actions should be
 are read-only evidence; the diagnostic never blanks the panel, locks, suspends,
 or changes a setting. The raw/max panel backlight values report the current
 local choice, not a health threshold.
+
+For the host thermal fields, values are millidegrees Celsius; compare the
+package/composite input with its reported critical threshold rather than using
+a generic laptop temperature cutoff. An NVMe `critical_warning` of zero, spare
+above its threshold, and zero media errors are the healthy baseline. Wear and
+unsafe-shutdown counters are cumulative observations: compare them across
+checks, and do not label an old nonzero count as a new event without a prior
+sample.
 
 In the optional Beryl section, the expected healthy shape is one `tailscaled`,
 one Mihomo `clash`, zero `netifyd`, and running Tailscale/OpenClash services.
