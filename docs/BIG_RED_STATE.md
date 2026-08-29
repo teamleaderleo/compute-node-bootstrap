@@ -101,7 +101,7 @@ for the exact change, verification evidence, Mac/phone notes, and rollback.
 
 ## Display power update — 2026-08-29
 
-The internal display runs its native 3072x1920 mode at 165 Hz and 150% scale, dims when idle, and blanks after 10 minutes. Local input wakes the display immediately. Blanking does not stop ChatGPT, SSH, Tailscale, builds, or other background work; automatic suspend and screen locking remain disabled.
+The internal display runs its native 3072x1920 mode at 165 Hz and 150% scale, starts each login at raw backlight 200/496 (about 40%), dims when idle, and blanks after 10 minutes. Local brightness keys can raise or lower it after login. Local input wakes the display immediately. Blanking does not stop ChatGPT, SSH, Tailscale, builds, or other background work; automatic suspend and screen locking remain disabled. A live desktop capture remained fully readable while the physical backlight reported blank, confirming that desktop-control routes can still inspect the session.
 
 A native 120 Hz test applied successfully and survived an immediate blank/wake cycle, but the shared graphical session later reasserted 165 Hz twice while other roots and GNOME Remote Desktop were active. Retry only in a quiet, locally observed window, then verify after blank/wake, Remote Desktop connection, relogin, and reboot before making it policy:
 
@@ -119,3 +119,5 @@ gsettings set org.gnome.desktop.session idle-delay 'uint32 0'
 ```
 
 For transport, closing the lid is not a sleep action. Power the laptop off and wait for lights/fans to stop before putting it in a bag. For ordinary desk use or movies, leave the Balanced profile selected; full-screen media should inhibit idle blanking through GNOME's standard mechanism.
+
+The round fingerprint reader at the keyboard's upper right is also the physical power button. GNOME currently displays its behavior as **Power Off** and handles the button interactively. Prefer a short press or GNOME's system-menu Power Off action for an orderly shutdown; holding the button is an emergency hard-off and can lose active work. Lid-close sleep is disabled because a suspended Wi-Fi/Tailscale host cannot be relied upon to receive or act on a remote wake request.

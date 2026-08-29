@@ -82,23 +82,7 @@ EOF
 fi
 
 printf '\n== Make the GNOME desktop predictable after every login ==\n'
-cat >/usr/local/sbin/big-red-session-settings <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-
-# Keep the remote host awake while allowing the high-resolution panel to sleep.
-gsettings set org.gnome.settings-daemon.plugins.power ambient-enabled false
-gsettings set org.gnome.settings-daemon.plugins.power idle-dim true
-gsettings set org.gnome.settings-daemon.plugins.power idle-brightness 30
-gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-timeout 0
-gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing'
-gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-battery-timeout 0
-gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-battery-type 'nothing'
-gsettings set org.gnome.desktop.session idle-delay 'uint32 600'
-gsettings set org.gnome.desktop.screensaver lock-enabled false
-gsettings set org.gnome.desktop.screensaver lock-delay 'uint32 0'
-EOF
-chmod 0755 /usr/local/sbin/big-red-session-settings
+install -o root -g root -m 0755 "${script_dir}/big-red-session-settings" /usr/local/sbin/big-red-session-settings
 
 install -d -m 0755 -o "${operator_user}" -g "${operator_user}" "/home/${operator_user}/.config/autostart"
 cat >"/home/${operator_user}/.config/autostart/big-red-session-settings.desktop" <<'EOF'
