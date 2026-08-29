@@ -54,6 +54,33 @@ logind_value() {
     '
 }
 
+codex_remote_control_pids() {
+    pgrep -u "$(id -u)" -f \
+        '^[^[:space:]]*/codex app-server --remote-control --listen unix://$' \
+        2>/dev/null || true
+}
+
+codex_local_control_socket_state() {
+    expected_pid=${1:-}
+    socket=${HOME:-}/.codex/app-server-control/app-server-control.sock
+    if [ ! -S "$socket" ]; then
+        printf 'absent\n'
+    elif [ -n "$expected_pid" ] && ss -xlnpH 2>/dev/null | awk \
+        -v socket="$socket" -v owner="pid=$expected_pid," '
+        index($0, socket) && index($0, owner) { listening = 1 }
+        END { exit !listening }
+    '; then
+        printf 'listening_owned\n'
+    elif ss -xlnH 2>/dev/null | awk -v socket="$socket" '
+        index($0, socket) { listening = 1 }
+        END { exit !listening }
+    '; then
+        printf 'listening_owner_unverified\n'
+    else
+        printf 'present_not_listening\n'
+    fi
+}
+
 printf 'timestamp=%s\n' "$(date --iso-8601=seconds)"
 printf 'hostname=%s\n' "$(hostname)"
 if ip -4 -brief address show wlp0s20f3 2>/dev/null | awk 'NF >= 3 {found = 1} END {exit !found}' ; then
@@ -223,4 +250,15 @@ if pgrep -f '^/usr/lib/chatgpt/ChatGPT$' >/dev/null 2>&1; then
     printf 'desktop_process=active\n'
 else
     printf 'desktop_process=inactive\n'
+fi
+remote_control_pids=$(codex_remote_control_pids)
+remote_control_processes=$(printf '%s\n' "$remote_control_pids" | awk 'NF { count++ } END { print count + 0 }')
+remote_control_pid=$(printf '%s\n' "$remote_control_pids" | awk 'NF { print; exit }')
+local_control_socket=$(codex_local_control_socket_state "$remote_control_pid")
+printf 'remote_control_processes=%s\n' "$remote_control_processes"
+printf 'local_control_socket=%s\n' "$local_control_socket"
+if [ "$remote_control_processes" = 1 ] && [ "$local_control_socket" = listening_owned ]; then
+    printf 'local_remote_control_transport=ready\n'
+else
+    printf 'local_remote_control_transport=not_ready\n'
 fi
