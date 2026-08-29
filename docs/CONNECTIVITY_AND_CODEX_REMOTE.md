@@ -41,7 +41,12 @@ https://learn.chatgpt.com/docs/remote-connections
   `scripts/big-red-connectivity-check`, prints a bounded, credential-free
   health snapshot. It summarizes services, sleep policy, Tailscale reachability,
   DNS Fake-IP classification, Chrony, capacity/power, Bluetooth noise, and the
-  ChatGPT service/process state without printing full network addresses.
+  ChatGPT service/process state without printing full network addresses. When
+  the purpose-specific `ssh beryl7` key is available on the Beryl LAN, it also
+  prints router service/process counts, RSS, available memory, current-boot OOM
+  count, and SoC temperature. That optional probe is key-only and capped at
+  seven seconds; it reports `router_ssh=unavailable` instead of prompting when
+  the router or identity is unavailable.
 
 The ChatGPT user service was enabled without restarting the running desktop app.
 It takes ownership on the next graphical login or reboot.
@@ -143,6 +148,13 @@ An answer in `198.18.0.0/15` for `controlplane.tailscale.com`, an Ubuntu NTP
 pool, or `ntp-bootstrap.ubuntu.com` means the corresponding router exception is
 missing or was not applied. Real answers were observed for all of them after
 the fixes.
+
+In the optional Beryl section, the expected healthy shape is one `tailscaled`,
+one Mihomo `clash`, zero `netifyd`, and running Tailscale/OpenClash services.
+`router_oom_kills_current_boot` is cumulative until the router reboots; it does
+not imply that each invocation found a new OOM. Compare the count and process
+identity across checks. The router probe is diagnostic only: it never restarts
+a service or changes a router setting.
 
 The Tailscale health note that some peers advertise routes while
 `--accept-routes` is false is intentional on `big-red`: the Beryl advertises

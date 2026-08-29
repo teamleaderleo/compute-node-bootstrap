@@ -56,6 +56,61 @@ fi
 printf 'beryl_path=%s\n' "$(ping_class gl-mt3600be)"
 printf 'macbook_path=%s\n' "$(ping_class leos-macbook-air)"
 
+printf '\nBeryl local health:\n'
+# The single-quoted script must expand on Beryl, not on Big Red.
+# shellcheck disable=SC2016
+if router_health=$(timeout 7s ssh \
+    -o BatchMode=yes \
+    -o PasswordAuthentication=no \
+    -o KbdInteractiveAuthentication=no \
+    -o StrictHostKeyChecking=yes \
+    -o ConnectTimeout=3 \
+    -o ConnectionAttempts=1 \
+    -o LogLevel=ERROR \
+    beryl7 '
+service_state() {
+    state=$(/etc/init.d/"$1" status 2>/dev/null)
+    if [ -n "$state" ]; then
+        printf "%s\n" "$state"
+    else
+        printf "unknown\n"
+    fi
+}
+
+process_count() {
+    pidof "$1" 2>/dev/null | wc -w | tr -d " "
+}
+
+process_rss_kib() {
+    name=$1
+    set -- $(pidof "$name" 2>/dev/null)
+    pid=${1:-}
+    if [ -n "$pid" ] && [ -r "/proc/$pid/status" ]; then
+        rss=$(sed -n "s/^VmRSS:[[:space:]]*\\([0-9][0-9]*\\).*/\\1/p" "/proc/$pid/status")
+        printf "%s\n" "${rss:-0}"
+    else
+        printf "0\n"
+    fi
+}
+
+printf "router_tailscale_service=%s\n" "$(service_state tailscale)"
+printf "router_openclash_service=%s\n" "$(service_state openclash)"
+printf "router_netifyd_service=%s\n" "$(service_state netifyd)"
+printf "router_tailscaled_processes=%s\n" "$(process_count tailscaled)"
+printf "router_clash_processes=%s\n" "$(process_count clash)"
+printf "router_netifyd_processes=%s\n" "$(process_count netifyd)"
+printf "router_tailscaled_rss_kib=%s\n" "$(process_rss_kib tailscaled)"
+printf "router_clash_rss_kib=%s\n" "$(process_rss_kib clash)"
+printf "router_mem_available_kib=%s\n" "$(sed -n "s/^MemAvailable:[[:space:]]*\\([0-9][0-9]*\\).*/\\1/p" /proc/meminfo)"
+printf "router_oom_kills_current_boot=%s\n" "$(logread 2>/dev/null | awk "/Out of memory: Killed process/ {count++} END {print count + 0}")"
+printf "router_soc_temp_millic=%s\n" "$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || true)"
+' 2>/dev/null); then
+    printf 'router_ssh=available\n'
+    printf '%s\n' "$router_health"
+else
+    printf 'router_ssh=unavailable\n'
+fi
+
 printf '\nDNS interception classification:\n'
 for name in controlplane.tailscale.com log.tailscale.com 1.ntp.ubuntu.com ntp-bootstrap.ubuntu.com; do
     printf '%s=%s\n' "$name" "$(dns_class "$name")"
