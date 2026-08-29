@@ -14,11 +14,11 @@ The in-person handoff is complete. Ubuntu was installed by the owner and Codex t
 - [x] Disabled Tailscale SSH after conventional OpenSSH was proven; this avoids recurring tailnet web checks.
 - [x] Enabled IP forwarding, advertised an exit node and approved it in the Tailscale admin console.
 - [x] Disabled GNOME idle dimming, ambient brightness and automatic suspend.
-- [x] Masked Linux sleep, suspend and hibernate targets and made lid close a no-op.
+- [x] Initially masked Linux sleep targets for remote-node reliability; later restored ordinary lid-close suspend while retaining no automatic idle suspend and keeping hibernate/hybrid sleep masked.
 - [x] Disabled Wi-Fi power saving and installed Tailscale's recommended UDP GRO forwarding hook.
 - [x] Enabled passwordless `sudo` for `leo` so future remote maintenance needs no physical approval.
 - [x] Installed Codex CLI and the preview Linux ChatGPT/Codex desktop app from OpenAI's official packages.
-- [x] Rebooted twice and verified that networking, Tailscale, OpenSSH, auto-login, no-sleep policy and the short remote alias return automatically.
+- [x] Rebooted twice and verified that networking, Tailscale, OpenSSH, auto-login, the then-current power policy and the short remote alias return automatically.
 
 The actual state and recovery commands are in [`BIG_RED_STATE.md`](BIG_RED_STATE.md).
 
@@ -34,4 +34,4 @@ No battery-charge threshold was set because Ubuntu exposes no supported charge-l
 
 ## If the machine becomes unreachable
 
-Normal operation should not require anyone locally: it does not sleep, Tailscale and SSH start at boot, and `leo` can administer it remotely. If power was lost long enough for the battery to empty or the machine was shut down, someone must press the physical Power button. No reliable remote power-on mechanism was exposed by the current Wi-Fi or firmware.
+Normal open-lid operation should not require anyone locally: it does not idle-suspend, Tailscale and SSH start at boot, and `leo` can administer it remotely. Closing the lid deliberately suspends it, and no reliable remote wake path is configured. If it is suspended, powered off, or drained, someone must open it and, if necessary, press the physical Power button.

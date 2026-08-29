@@ -16,16 +16,11 @@ apt install -y unattended-upgrades curl ca-certificates ethtool networkd-dispatc
 
 systemctl enable --now apt-daily.timer apt-daily-upgrade.timer unattended-upgrades.service
 
-printf '\n== Keep the node awake and reachable ==\n'
+printf '\n== Keep the open node awake and make lid-close safe ==\n'
 install -d -m 0755 /etc/systemd/logind.conf.d
-cat >/etc/systemd/logind.conf.d/60-unattended-node.conf <<'EOF'
-[Login]
-HandleLidSwitch=ignore
-HandleLidSwitchExternalPower=ignore
-HandleLidSwitchDocked=ignore
-IdleAction=ignore
-EOF
-systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
+install -o root -g root -m 0644 "${script_dir}/../logind.conf.d/60-unattended-node.conf" /etc/systemd/logind.conf.d/60-unattended-node.conf
+systemctl unmask sleep.target suspend.target
+systemctl mask hibernate.target hybrid-sleep.target
 
 printf '\n== Allow the operator account to administer the unattended node ==\n'
 cat >/etc/sudoers.d/60-big-red-admin <<EOF
@@ -117,4 +112,4 @@ tailscale set --operator="${operator_user}"
 systemctl enable ssh NetworkManager networkd-dispatcher
 
 printf '\nUnattended-node configuration complete.\n'
-printf 'Reboot once to activate the final package, Wi-Fi and sleep-policy changes.\n'
+printf 'Reboot once to activate the final package and Wi-Fi changes.\n'

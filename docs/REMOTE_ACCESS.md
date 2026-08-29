@@ -121,6 +121,6 @@ A GitHub self-hosted Actions runner establishes outbound connections to GitHub. 
 
 ## 8. Actual `big-red` result
 
-The completed machine uses conventional OpenSSH through Tailscale, has Tailscale SSH disabled, does not suspend, disables Wi-Fi power saving and permits passwordless remote administration. See [`BIG_RED_STATE.md`](BIG_RED_STATE.md) for the exact observed state and recovery commands.
+The completed machine uses conventional OpenSSH through Tailscale, has Tailscale SSH disabled, does not suspend automatically while open, suspends when its lid is deliberately closed, disables Wi-Fi power saving and permits passwordless remote administration. See [`BIG_RED_STATE.md`](BIG_RED_STATE.md) for the exact observed state and recovery commands.
 
 No supported battery charge-threshold interface was exposed by this laptop's installed firmware, so no charge ceiling was guessed or forced.

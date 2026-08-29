@@ -47,9 +47,9 @@ Tailscale SSH itself is off. Tailscale supplies private reachability; the normal
 
 - `ssh`, `tailscaled`, NetworkManager, `networkd-dispatcher` and unattended upgrades start at boot.
 - Tailscale key expiry is disabled for `big-red`.
-- GNOME automatic suspend and ambient brightness are disabled. Idle dimming is enabled, and the display blanks after 10 minutes of inactivity without locking or suspending the host. The internal panel currently uses its native 3072x1920 mode at 165 Hz and 150% scale.
-- systemd sleep, suspend, hibernate and hybrid-sleep targets are masked.
-- Closing the lid does nothing, including on battery.
+- GNOME automatic idle suspend and ambient brightness are disabled. Idle dimming is enabled, and the display blanks after 10 minutes of inactivity without locking or suspending the open host. The internal panel currently uses its native 3072x1920 mode at 165 Hz and 150% scale.
+- systemd sleep and suspend are available; hibernate and hybrid-sleep remain masked.
+- Closing the lid requests suspend on AC, battery, and while docked. This intuitive transport safety takes precedence over remote availability after somebody deliberately closes the machine.
 - Wi-Fi power saving is disabled.
 - The Wi-Fi UDP GRO forwarding optimization is restored whenever the interface becomes routable.
 - `leo` has passwordless `sudo` for unattended maintenance.
@@ -67,7 +67,9 @@ tailscale netcheck
 systemctl is-enabled sleep.target suspend.target hibernate.target hybrid-sleep.target
 ```
 
-The four sleep targets should report `masked`.
+The expected results are `static`, `static`, `masked`, `masked`: suspend is available, while hibernate and hybrid sleep remain disabled.
+
+Rollback to the former always-awake node policy is explicit but no longer recommended for family use: change the three `HandleLidSwitch*` values in `/etc/systemd/logind.conf.d/60-unattended-node.conf` to `ignore`, mask `sleep.target` and `suspend.target`, then run `sudo systemctl reload systemd-logind`. Reapply the tracked configuration and unmask those two targets to restore the current family-safe policy.
 
 ## Router status and later migration
 
@@ -82,7 +84,7 @@ When `big-red` reaches its long-term residential connection:
 5. test internet, DNS and the intended work applications;
 6. disable Custom Exit Node once and verify the original OpenClash/Bandwagon route returns.
 
-The machine cannot be reached while it is genuinely powered off. The practical design is therefore to keep it on the OEM charger and prevent sleep. After a shutdown or complete battery drain, the physical fallback is one press of the Power button; services and remote access then start automatically.
+The machine cannot be reached while suspended or genuinely powered off. For unattended remote operation, leave it open on a hard surface and connected to the OEM charger; the panel can still blank. After lid-open/resume, shutdown, or complete battery drain, services and remote access are expected to return automatically, but the physical fallback is one press of the Power button.
 
 
 ## Connectivity hardening — 2026-08-28
@@ -118,6 +120,6 @@ gsettings set org.gnome.settings-daemon.plugins.power idle-dim false
 gsettings set org.gnome.desktop.session idle-delay 'uint32 0'
 ```
 
-For transport, closing the lid is not a sleep action. Power the laptop off and wait for lights/fans to stop before putting it in a bag. For ordinary desk use or movies, leave the Balanced profile selected; full-screen media should inhibit idle blanking through GNOME's standard mechanism.
+For transport, closing the lid requests suspend. Wait a few seconds before putting it in a bag; use Power Off instead for long transport or storage. For unattended remote work, keep the lid open on a hard surface. For ordinary desk use or movies, leave the Balanced profile selected; full-screen media should inhibit idle blanking through GNOME's standard mechanism.
 
-The round fingerprint reader at the keyboard's upper right is also the physical power button. GNOME currently displays its behavior as **Power Off** and handles the button interactively. Prefer a short press or GNOME's system-menu Power Off action for an orderly shutdown; holding the button is an emergency hard-off and can lose active work. Lid-close sleep is disabled because a suspended Wi-Fi/Tailscale host cannot be relied upon to receive or act on a remote wake request.
+The round fingerprint reader at the keyboard's upper right is also the physical power button. GNOME currently displays its behavior as **Power Off** and handles the button interactively. Prefer a short press or GNOME's system-menu Power Off action for an orderly shutdown; holding the button is an emergency hard-off and can lose active work. A suspended Wi-Fi/Tailscale host cannot currently be relied upon to receive or act on a remote wake request, so remote operation requires leaving the lid open.

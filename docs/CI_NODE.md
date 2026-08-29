@@ -60,7 +60,7 @@ That gives us a boring native-Linux baseline and directly exercises the filesyst
 Do this after remote management works:
 
 - no automatic suspend while on AC;
-- lid close does not suspend when the machine is acting as a node;
+- lid close suspends as the unambiguous family/transport safety action; leave the machine physically open while it is acting as a node;
 - 70–80% charge ceiling;
 - reboot test after every persistent power-management change.
 

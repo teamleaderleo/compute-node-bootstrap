@@ -26,7 +26,7 @@ https://learn.chatgpt.com/docs/remote-connections
 
 ## Host availability configuration
 
-- GNOME automatic suspend and all systemd sleep targets remain disabled.
+- GNOME automatic idle suspend remains disabled while the lid is open. Closing the lid explicitly requests suspend; hibernate and hybrid sleep remain disabled.
 - GNOME dims the panel and blanks it after 10 idle minutes without locking or
   suspending the host.
 - Automatic login is enabled for `leo`.
@@ -39,7 +39,7 @@ https://learn.chatgpt.com/docs/remote-connections
   server-side keepalive every 45 seconds and tolerates four missed replies.
 - `/usr/local/bin/big-red-connectivity-check`, sourced from
   `scripts/big-red-connectivity-check`, prints a bounded, credential-free
-  health snapshot. It summarizes services, sleep masks, Tailscale reachability,
+  health snapshot. It summarizes services, sleep policy, Tailscale reachability,
   DNS Fake-IP classification, Chrony, capacity/power, Bluetooth noise, and the
   ChatGPT service/process state without printing full network addresses.
 
