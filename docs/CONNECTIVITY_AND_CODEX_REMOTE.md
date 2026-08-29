@@ -49,7 +49,11 @@ https://learn.chatgpt.com/docs/remote-connections
   the router or identity is unavailable.
 
 The ChatGPT user service was enabled without restarting the running desktop app.
-It takes ownership on the next graphical login or reboot.
+It takes ownership on the next graphical login or reboot. During the current
+pre-existing session, the diagnostic therefore reports an enabled but inactive
+user service, an active graphical session, and an active desktop process. That
+combination is expected until the coordinated login/reboot validation; do not
+start a second instance merely to make the service state say active.
 
 ## Root cause found on 2026-08-28
 

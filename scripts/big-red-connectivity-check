@@ -139,7 +139,9 @@ printf 'discovering=%s\n' "$(busctl get-property org.bluez /org/bluez/hci0 org.b
 printf 'zero_address_errors_last_hour=%s\n' "$(journalctl -u bluetooth.service --since '-1 hour' -p err --no-pager 2>/dev/null | awk '/00:00:00:00:00:00/ {count++} END {print count + 0}')"
 
 printf '\nChatGPT remote host:\n'
+printf 'user_service_enabled=%s\n' "$(systemctl --user is-enabled chatgpt-remote-host.service 2>/dev/null || true)"
 printf 'user_service=%s\n' "$(systemctl --user is-active chatgpt-remote-host.service 2>/dev/null || true)"
+printf 'graphical_session=%s\n' "$(systemctl --user is-active graphical-session.target 2>/dev/null || true)"
 if pgrep -f '^/usr/lib/chatgpt/ChatGPT$' >/dev/null 2>&1; then
     printf 'desktop_process=active\n'
 else
