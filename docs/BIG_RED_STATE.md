@@ -14,7 +14,9 @@ Observed on 2026-08-28 after the Ubuntu installation. This file intentionally co
 - SUNWODA BX90 battery, roughly 96 Wh design capacity
 - Ubuntu 26.04 LTS, hostname `big-red`, user `leo`, timezone `Asia/Shanghai`
 
-The OEM 140 W USB-C charger is recognized correctly. Linux exposes no battery charge-threshold control on this firmware, so no charge ceiling was configured.
+The OEM 140 W USB-C charger is recognized correctly. Linux's standard power-supply interface exposes no battery threshold, but a later read-only audit verified the model-specific Xiaomi MIFS charge-care method in this machine's own ACPI tables. See [the guarded 80% runbook](BIG_RED_CHARGE_LIMIT.md).
+
+As of 2026-08-29, the charge cap remains inactive and the battery reports 100%. Ubuntu's `acpi-call-dkms` package built a module for kernel `7.0.0-30-generic` and signed it with the machine-local DKMS key, but Secure Boot correctly rejected it because that key has not yet been physically enrolled. The model-locked helper is installed at `/usr/local/sbin/big-red-charge-limit`; no charge command, boot service, module-load declaration, or udev re-arm rule has been applied. Finish the attended MOK enrollment and reversible test before enabling persistence. Do not disable Secure Boot to bypass this gate.
 
 ## Operator access
 

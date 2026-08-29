@@ -49,6 +49,7 @@ The [`scripts/`](scripts/) directory is only for the remote operator after hando
 - [In-person REDMI bootstrap and Codex takeover TODO](docs/REDMI_HANDOFF_TODO.md)
 - [Remote access and named SSH key](docs/REMOTE_ACCESS.md)
 - [Connectivity and Codex Remote runbook](docs/CONNECTIVITY_AND_CODEX_REMOTE.md)
+- [`big-red` 80% firmware charge-limit runbook](docs/BIG_RED_CHARGE_LIMIT.md)
 - [`big-red` observed state and recovery](docs/BIG_RED_STATE.md)
 - [Beryl 7 pre-departure checklist](docs/BERYL7_BEFORE_LEAVING.md)
 - [Beryl 7 → REDMI exit node](docs/GLINET_EXIT_NODE.md)

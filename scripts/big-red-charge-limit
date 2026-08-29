@@ -1,0 +1,213 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly expected_vendor='XIAOMI'
+readonly expected_product='REDMI Book Pro 16 2025'
+readonly expected_board='TM2409'
+readonly expected_bios='RMAAR6B0P0606'
+readonly expected_dsdt_sha256='57dbcfd3227c6170e017291f24ca28d2ca895f7f25c7661a6d512278a3e1a928'
+readonly firmware_method='\_SB.PC00.WMID.WMAA'
+readonly dmi_root='/sys/class/dmi/id'
+readonly dsdt_path='/sys/firmware/acpi/tables/DSDT'
+readonly acpi_call_path='/proc/acpi/call'
+
+firmware_response=''
+response_bytes=()
+
+fail() {
+  printf 'big-red-charge-limit: %s\n' "$*" >&2
+  exit 1
+}
+
+read_value() {
+  tr -d '\n' <"$1"
+}
+
+guard_hardware() {
+  local actual_hash
+
+  [[ $(read_value "${dmi_root}/sys_vendor") == "${expected_vendor}" ]] || fail 'DMI vendor is not allowlisted'
+  [[ $(read_value "${dmi_root}/product_name") == "${expected_product}" ]] || fail 'DMI product is not allowlisted'
+  [[ $(read_value "${dmi_root}/board_name") == "${expected_board}" ]] || fail 'DMI board is not allowlisted'
+  [[ $(read_value "${dmi_root}/bios_version") == "${expected_bios}" ]] || fail 'BIOS version is not allowlisted'
+
+  actual_hash=$(sha256sum "${dsdt_path}" | awk '{print $1}')
+  [[ ${actual_hash} == "${expected_dsdt_sha256}" ]] || fail 'DSDT hash is not allowlisted; re-audit the firmware before writing'
+}
+
+require_interface() {
+  [[ ${EUID} -eq 0 ]] || fail 'run as root'
+  [[ -r ${acpi_call_path} && -w ${acpi_call_path} ]] || fail '/proc/acpi/call is unavailable; load the reviewed acpi_call module'
+}
+
+firmware_call() {
+  local request=$1
+
+  if ! printf '%s\n' "${request}" >"${acpi_call_path}"; then
+    printf 'big-red-charge-limit: firmware request write failed\n' >&2
+    return 1
+  fi
+  if ! firmware_response=$(<"${acpi_call_path}"); then
+    printf 'big-red-charge-limit: firmware response read failed\n' >&2
+    return 1
+  fi
+  return 0
+}
+
+parse_response() {
+  local value
+
+  mapfile -t response_bytes < <(grep -oE '0x[0-9A-Fa-f]+' <<<"${firmware_response}")
+  if ((${#response_bytes[@]} < 7)); then
+    printf 'big-red-charge-limit: malformed firmware response: %s\n' "${firmware_response}" >&2
+    return 1
+  fi
+
+  for value in "${response_bytes[@]}"; do
+    if ! [[ ${value} =~ ^0x[0-9A-Fa-f]{1,2}$ ]]; then
+      printf 'big-red-charge-limit: non-byte firmware response: %s\n' "${firmware_response}" >&2
+      return 1
+    fi
+  done
+  return 0
+}
+
+byte_value() {
+  printf '%d\n' "$((response_bytes[$1]))"
+}
+
+validate_success() {
+  parse_response || return 1
+  if [[ $(byte_value 1) -ne 128 ]]; then
+    printf 'big-red-charge-limit: firmware rejected request: %s\n' "${firmware_response}" >&2
+    return 1
+  fi
+  return 0
+}
+
+read_code() {
+  local buffer code
+
+  buffer='0x00 0xfa 0x00 0x10 0x02 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00'
+  firmware_call "${firmware_method} 0x0 0x1 { ${buffer} }" || return 1
+  validate_success || return 1
+
+  if [[ $(byte_value 3) -ne 16 || $(byte_value 4) -ne 2 ]]; then
+    printf 'big-red-charge-limit: unexpected charge-command echo: %s\n' "${firmware_response}" >&2
+    return 1
+  fi
+
+  code=$(byte_value 6)
+  case ${code} in
+    0 | 1 | 4 | 5 | 6 | 7 | 8) printf '%s\n' "${code}" ;;
+    *)
+      printf 'big-red-charge-limit: unexpected threshold code %s\n' "${code}" >&2
+      return 1
+      ;;
+  esac
+}
+
+write_code() {
+  local code=$1
+  local buffer
+
+  case ${code} in
+    0 | 1) ;;
+    *)
+      printf 'big-red-charge-limit: refusing non-allowlisted write code\n' >&2
+      return 1
+      ;;
+  esac
+
+  buffer="0x00 0xfb 0x00 0x10 0x02 0x00 0x0${code} 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00"
+  firmware_call "${firmware_method} 0x0 0x1 { ${buffer} }" || return 1
+  validate_success
+}
+
+show_status() {
+  local code
+
+  code=$(read_code) || return 1
+  case ${code} in
+    0) printf 'charge_limit=100\nfirmware_code=0\n' ;;
+    1 | 4) printf 'charge_limit=80\nfirmware_code=%s\n' "${code}" ;;
+    5) printf 'charge_limit=70\nfirmware_code=5\n' ;;
+    6) printf 'charge_limit=60\nfirmware_code=6\n' ;;
+    7) printf 'charge_limit=50\nfirmware_code=7\n' ;;
+    8) printf 'charge_limit=40\nfirmware_code=8\n' ;;
+  esac
+}
+
+set_100() {
+  local code
+
+  write_code 0 || return 1
+  code=$(read_code) || return 1
+  [[ ${code} == 0 ]] || {
+    printf 'big-red-charge-limit: 100%% readback mismatch (code %s)\n' "${code}" >&2
+    return 1
+  }
+  printf 'charge_limit=100\nfirmware_code=0\n'
+}
+
+arm_80_once() {
+  local code
+
+  # Xiaomi's charge-care state machine requires a 100% -> 80% transition.
+  write_code 0 || return 1
+  sleep 0.08
+  write_code 1 || return 1
+  code=$(read_code) || return 1
+  [[ ${code} == 1 ]] || {
+    printf 'big-red-charge-limit: 80%% readback mismatch (code %s)\n' "${code}" >&2
+    return 1
+  }
+  return 0
+}
+
+set_80() {
+  local attempt code
+
+  for attempt in 1 2; do
+    if arm_80_once; then
+      printf 'charge_limit=80\nfirmware_code=1\nattempt=%s\n' "${attempt}"
+      return 0
+    fi
+    printf 'big-red-charge-limit: attempt %s failed\n' "${attempt}" >&2
+    sleep 0.10
+  done
+
+  printf 'big-red-charge-limit: attempts exhausted; restoring ordinary charging\n' >&2
+  if write_code 0 && code=$(read_code) && [[ ${code} == 0 ]]; then
+    printf 'big-red-charge-limit: rollback to 100%% verified\n' >&2
+  else
+    printf 'big-red-charge-limit: rollback could not be verified\n' >&2
+  fi
+  return 1
+}
+
+usage() {
+  printf 'Usage: %s {status|set-80|set-100}\n' "${0##*/}" >&2
+}
+
+main() {
+  [[ $# -eq 1 ]] || {
+    usage
+    exit 2
+  }
+
+  guard_hardware
+  require_interface
+
+  case $1 in
+    status) show_status ;;
+    set-80) set_80 ;;
+    set-100) set_100 ;;
+    *)
+      usage
+      exit 2
+      ;;
+  esac
+}
+
+main "$@"

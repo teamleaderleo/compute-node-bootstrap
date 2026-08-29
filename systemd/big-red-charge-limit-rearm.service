@@ -1,0 +1,9 @@
+[Unit]
+Description=Re-arm big-red's verified 80%% firmware charge limit
+Documentation=https://github.com/teamleaderleo/compute-node-bootstrap/blob/main/docs/BIG_RED_CHARGE_LIMIT.md
+After=systemd-modules-load.service
+ConditionPathExists=/proc/acpi/call
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/big-red-charge-limit set-80
