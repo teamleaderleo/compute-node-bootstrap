@@ -61,13 +61,45 @@ sudo big-red-charge-limit set-80
 
 `big-red` keeps UEFI Secure Boot enabled. Ubuntu's DKMS tooling signs `acpi_call` with a machine-local, module-signing-only Machine Owner Key (MOK). If `modprobe` reports `Key was rejected by service`, stop: no firmware call has occurred, and Secure Boot is working as designed.
 
-Do not disable Secure Boot or shim validation. Instead, while physically present:
+Do not disable Secure Boot or shim validation. Before staging enrollment, verify that no earlier
+request is pending and that the installed DKMS module is signed by this machine's intended
+certificate:
+
+```bash
+mokutil --list-new
+openssl x509 -inform DER -in /var/lib/shim-signed/mok/MOK.der -noout -subject -fingerprint -sha1
+openssl x509 -inform DER -in /var/lib/shim-signed/mok/MOK.der -noout -fingerprint -sha256
+openssl x509 -inform DER -in /var/lib/shim-signed/mok/MOK.der -noout -serial
+modinfo -F signer acpi_call
+modinfo -F sig_key acpi_call
+```
+
+The first command should print no pending certificate. The expected identifiers are deliberately
+algorithm-labeled because the certificate SHA-1 fingerprint, SHA-256 fingerprint, and module key
+ID are different representations:
+
+- subject and module signer: `CN = big-red Secure Boot Module Signature key`;
+- SHA-1 fingerprint: `E8:59:D1:FB:2D:50:D8:5C:88:83:7A:39:83:77:47:C1:2C:5F:60:08`;
+- SHA-256 fingerprint: `A9:59:74:3D:E8:CD:52:81:6C:A5:4F:67:31:1B:83:83:A8:15:7D:34:AC:0D:F0:ED:41:2C:CE:2C:09:E9:26:D8`;
+- certificate serial / `modinfo` key ID: `15:42:11:E4:41:E0:AB:3D:CC:96:37:E2:28:2F:51:97:74:DA:D9:DB`.
+
+If any value differs, stop and re-audit rather than enrolling it. While physically present, stage
+the verified certificate:
 
 ```bash
 sudo update-secureboot-policy --enroll-key
+mokutil --list-new
 ```
 
-Choose a temporary enrollment password locally; do not put it in this repository or a chat. Reboot while remaining at the machine. In the blue MokManager screen, select **Enroll MOK**, review/confirm the certificate, enter that temporary password, and reboot when asked. Ubuntu documents that the one-run MokManager password is cleared after the operation. After Ubuntu returns:
+Choose a temporary enrollment password locally; do not put it in this repository or a chat. Confirm
+that `mokutil --list-new` shows the same subject and SHA-1 fingerprint before rebooting. If it does
+not, cancel the pending request with `sudo mokutil --revoke-import`, verify that `mokutil
+--list-new` is empty, and stop.
+
+Reboot while remaining at the machine. In the blue MokManager screen, select **Enroll MOK**,
+review/confirm the certificate, enter that temporary password, and reboot when asked. Ubuntu
+documents that the one-run MokManager password is cleared after the operation. After Ubuntu
+returns:
 
 ```bash
 mokutil --sb-state
