@@ -51,10 +51,11 @@ https://learn.chatgpt.com/docs/remote-connections
   seven seconds; it reports `router_ssh=unavailable` instead of prompting when
   the router or identity is unavailable.
 
-The host-health section reads CPU-package and root-NVMe temperature/critical
-thresholds from hwmon. When the root filesystem is directly backed by an NVMe
-namespace, it also makes one five-second, noninteractive, read-only SMART-log
-request and prints only health counters: critical warnings, spare, wear,
+The host-health section reads CPU-package temperature/critical thresholds from
+hwmon. When the root filesystem is directly backed by an NVMe namespace, it
+binds that controller to its own hwmon child for temperature/critical thresholds
+and makes one five-second, noninteractive, read-only SMART-log request. It
+prints only health counters: critical warnings, spare, wear,
 media/error-log counts, unsafe shutdowns, and time above warning/critical
 temperature. It never prints the drive model, serial number, firmware, device
 path, namespace size, or raw SMART payload. `nvme_smart=unavailable` means the

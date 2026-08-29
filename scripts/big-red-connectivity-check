@@ -75,6 +75,26 @@ hwmon_metric() {
     printf 'unavailable\n'
 }
 
+child_hwmon_metric() {
+    hwmon_parent=$1
+    expected_label=$2
+    metric_suffix=$3
+
+    for hwmon_directory in "$hwmon_parent"/hwmon*; do
+        [ -d "$hwmon_directory" ] || continue
+        for label_path in "$hwmon_directory"/temp*_label; do
+            [ -r "$label_path" ] || continue
+            [ "$(cat "$label_path")" = "$expected_label" ] || continue
+            metric_path=${label_path%_label}_$metric_suffix
+            if [ -r "$metric_path" ]; then
+                cat "$metric_path"
+                return
+            fi
+        done
+    done
+    printf 'unavailable\n'
+}
+
 codex_remote_control_pids() {
     pgrep -u "$(id -u)" -f \
         '^[^[:space:]]*/codex app-server --remote-control --listen unix://$' \
@@ -255,12 +275,16 @@ printf 'journal=%s\n' "$(journalctl --disk-usage 2>/dev/null | sed 's/^Archived 
 printf 'power_profile=%s\n' "$(powerprofilesctl get 2>/dev/null || true)"
 printf 'cpu_package_temperature_millic=%s\n' "$(hwmon_metric coretemp 'Package id 0' input)"
 printf 'cpu_package_critical_millic=%s\n' "$(hwmon_metric coretemp 'Package id 0' crit)"
-printf 'nvme_composite_temperature_millic=%s\n' "$(hwmon_metric nvme Composite input)"
-printf 'nvme_composite_critical_millic=%s\n' "$(hwmon_metric nvme Composite crit)"
 
 root_source=$(findmnt -n -o SOURCE / 2>/dev/null || true)
 nvme_controller=$(printf '%s\n' "$root_source" | sed -n \
     's#^\(/dev/nvme[0-9][0-9]*\)n[0-9][0-9]*\(p[0-9][0-9]*\)\{0,1\}$#\1#p')
+nvme_controller_name=${nvme_controller#/dev/}
+root_nvme_hwmon=/sys/class/nvme/$nvme_controller_name
+printf 'nvme_composite_temperature_millic=%s\n' \
+    "$(child_hwmon_metric "$root_nvme_hwmon" Composite input)"
+printf 'nvme_composite_critical_millic=%s\n' \
+    "$(child_hwmon_metric "$root_nvme_hwmon" Composite crit)"
 if [ -n "$nvme_controller" ] && command -v nvme >/dev/null 2>&1 && \
     nvme_smart=$(timeout 5s sudo -n nvme smart-log "$nvme_controller" \
         --output-format=json 2>/dev/null) && \
