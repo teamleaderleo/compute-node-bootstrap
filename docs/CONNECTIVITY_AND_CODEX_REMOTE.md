@@ -1,6 +1,6 @@
 # Connectivity and Codex Remote runbook
 
-Last verified on `big-red`: 2026-08-28 (Asia/Shanghai).
+Last verified on `big-red`: 2026-08-30 (Asia/Shanghai).
 
 This file contains no credentials, enrollment URLs, or private keys.
 
@@ -42,7 +42,9 @@ https://learn.chatgpt.com/docs/remote-connections
   health snapshot. It summarizes services, sleep targets, effective GNOME
   screen/idle behavior, effective logind lid actions, Tailscale reachability,
   DNS Fake-IP classification, Chrony, capacity/power, Bluetooth noise, and the
-  ChatGPT service/process state without printing full network addresses. When
+  ChatGPT launcher, desktop, Codex remote-control process, and private local
+  control-listener state without printing process arguments, socket paths, or
+  full network addresses. When
   the purpose-specific `ssh beryl7` key is available on the Beryl LAN, it also
   prints router service/process counts, RSS, available memory, current-boot OOM
   count, and SoC temperature. That optional probe is key-only and capped at
@@ -55,6 +57,16 @@ pre-existing session, the diagnostic therefore reports an enabled but inactive
 user service, an active graphical session, and an active desktop process. That
 combination is expected until the coordinated login/reboot validation; do not
 start a second instance merely to make the service state say active.
+
+The launcher unit and the actual local Remote transport are separate evidence.
+On 2026-08-30 the launcher remained inactive for the reason above, while one
+user-owned `codex app-server --remote-control --listen unix://` process and its
+private local control socket were both live. The diagnostic reports those as
+`remote_control_processes=1`, `local_control_socket=listening_owned`, and
+`local_remote_control_transport=ready`. That proves the local process/listener
+shape only; it does not claim that a phone is paired or that the external relay
+is reachable. Keep the coordinated next-login service validation in the
+backlog, but do not treat an inactive launcher alone as a Remote outage.
 
 ## Root cause found on 2026-08-28
 
