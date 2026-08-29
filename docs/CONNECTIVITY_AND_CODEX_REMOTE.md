@@ -79,9 +79,17 @@ tailscale.io
 ts.net
 *.ts.net
 connectivity-check.ubuntu.com
+ntp.ubuntu.com
+*.ntp.ubuntu.com
+ntp-bootstrap.ubuntu.com
 ```
 
-`connectivity-check.ubuntu.com` is included because Tailscale's captive-portal check was also receiving an unusable Fake-IP answer. The override was committed and applied. The selected
+`connectivity-check.ubuntu.com` is included because Tailscale's captive-portal
+check was also receiving an unusable Fake-IP answer. The three Ubuntu NTP
+patterns were added on 2026-08-29 after all four `*.ntp.ubuntu.com` pools and
+`ntp-bootstrap.ubuntu.com` were observed in `198.18.0.0/15`; Chrony's NTS-KE
+traffic cannot rely on OpenClash intercepting those synthetic destinations.
+The override was committed and applied. The selected
 `beryl7-openclash-cn-direct-v2.yaml` profile, proxy mode, and proxy credentials
 were not changed.
 
@@ -92,6 +100,16 @@ Immediately after applying:
 - `tailscaled` completed a fresh authenticated control-plane login;
 - the local Beryl peer was direct at roughly 2–3 ms;
 - OpenClash continued providing the existing Los Angeles internet egress.
+
+After the NTP addition on 2026-08-29:
+
+- `1` through `4.ntp.ubuntu.com` and `ntp-bootstrap.ubuntu.com` all returned
+  real Ubuntu addresses rather than `198.18.0.0/15`;
+- a Chrony-only restart forced immediate re-resolution, selected a real
+  `185.125.190.x` source, and retained valid NTS authentication cookies;
+- Chrony reported `Leap status: Normal` with no restart warnings;
+- the Beryl Tailscale path remained direct and the full
+  `big-red-connectivity-check` passed.
 
 The DERP region can still be in North America because OpenClash provides U.S.
 egress. That is expected; the important correction is that Tailscale control
@@ -109,6 +127,10 @@ Focused checks:
 
 ```bash
 dig +short @192.168.8.1 controlplane.tailscale.com A
+dig +short @192.168.8.1 1.ntp.ubuntu.com A
+dig +short @192.168.8.1 ntp-bootstrap.ubuntu.com A
+chronyc -n tracking
+sudo chronyc -N authdata
 tailscale status
 tailscale ping -c 3 gl-mt3600be
 tailscale netcheck
@@ -117,9 +139,10 @@ systemctl --user is-enabled chatgpt-remote-host.service
 sudo sshd -T | grep -E 'clientalive(interval|countmax)|tcpkeepalive|usedns'
 ```
 
-A `controlplane.tailscale.com` answer in `198.18.0.0/15` means the router
-exception is missing or was not applied. A `192.200.x.x` answer was observed
-after the fix.
+An answer in `198.18.0.0/15` for `controlplane.tailscale.com`, an Ubuntu NTP
+pool, or `ntp-bootstrap.ubuntu.com` means the corresponding router exception is
+missing or was not applied. Real answers were observed for all of them after
+the fixes.
 
 The Tailscale health note that some peers advertise routes while
 `--accept-routes` is false is intentional on `big-red`: the Beryl advertises
@@ -168,8 +191,9 @@ that task; keep ChatGPT Remote conceptually separate.
 Router rollback:
 
 1. Open **OpenClash → Overwrite Settings → DNS Settings**.
-2. Remove the seven exception patterns above, or disable the custom
-   **Fake-IP-Filter**.
+2. Remove only the affected exception group above (the seven
+   Tailscale/connectivity patterns and/or the three Ubuntu NTP patterns), or
+   disable the custom **Fake-IP-Filter** to roll the entire override back.
 3. **Commit Settings**, then **Apply Settings**.
 4. Confirm the previous profile is still selected.
 
