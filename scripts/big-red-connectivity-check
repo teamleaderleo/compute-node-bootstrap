@@ -102,7 +102,30 @@ printf "router_netifyd_processes=%s\n" "$(process_count netifyd)"
 printf "router_tailscaled_rss_kib=%s\n" "$(process_rss_kib tailscaled)"
 printf "router_clash_rss_kib=%s\n" "$(process_rss_kib clash)"
 printf "router_mem_available_kib=%s\n" "$(sed -n "s/^MemAvailable:[[:space:]]*\\([0-9][0-9]*\\).*/\\1/p" /proc/meminfo)"
-printf "router_oom_kills_current_boot=%s\n" "$(logread 2>/dev/null | awk "/Out of memory: Killed process/ {count++} END {print count + 0}")"
+router_uptime_seconds=$(awk "{print int(\$1)}" /proc/uptime 2>/dev/null)
+printf "router_uptime_seconds=%s\n" "${router_uptime_seconds:-unknown}"
+logread 2>/dev/null | awk -v uptime="$router_uptime_seconds" "
+/Out of memory: Killed process/ {
+    count++
+    latest=\$0
+}
+END {
+    age=\"not_observed\"
+    if (count > 0) {
+        marker=latest
+        sub(/^.*\\[/, \"\", marker)
+        sub(/\\..*$/, \"\", marker)
+        # sub() leaves marker string-typed in some awk implementations.
+        if (marker ~ /^[0-9]+$/ && uptime ~ /^[0-9]+$/ &&
+            uptime + 0 >= marker + 0) {
+            age=(uptime + 0)-(marker + 0)
+        } else {
+            age=\"unknown\"
+        }
+    }
+    printf \"router_oom_kills_current_boot=%d\\n\", count + 0
+    printf \"router_latest_oom_age_seconds=%s\\n\", age
+}"
 printf "router_soc_temp_millic=%s\n" "$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || true)"
 ' 2>/dev/null); then
     printf 'router_ssh=available\n'
