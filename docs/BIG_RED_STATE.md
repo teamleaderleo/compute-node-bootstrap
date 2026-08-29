@@ -70,6 +70,11 @@ not copy either private key between machines or replace one with the other.
 - Linux IPv4/IPv6 forwarding is enabled.
 - `big-red` advertises a Tailscale exit node and the route is approved.
 - Codex CLI 0.150.1 and the official preview Linux ChatGPT/Codex desktop app 26.825.31414 are installed.
+- The Ubuntu-native workstation set provides LibreOffice Writer/Calc/Impress, Showtime, Amberol,
+  File Roller and Remmina plus system `ripgrep`, `sqlite3` and `hyperfine`. Office documents no
+  longer resolve to ChatGPT; PDF/image defaults are Papers/Loupe. See
+  [`BIG_RED_WORKSTATION.md`](BIG_RED_WORKSTATION.md) for the reproducible apply, verification and
+  rollback boundary.
 - GNOME LocalSearch indexes the standard Desktop/Documents/Downloads/media folders, not all of `$HOME`. Repositories, build trees, and language caches use project-aware search (`rg`, editors) instead of desktop metadata extraction.
 
 ## Quick checks
