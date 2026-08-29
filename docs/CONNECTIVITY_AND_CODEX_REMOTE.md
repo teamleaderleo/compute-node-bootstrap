@@ -194,6 +194,13 @@ unsafe-shutdown counters are cumulative observations: compare them across
 checks, and do not label an old nonzero count as a new event without a prior
 sample.
 
+`battery_capacity_percent` is current state of charge, not battery health. The
+energy fields are raw micro-watt-hours reported by the battery firmware;
+compare `battery_energy_full_uwh` with `battery_energy_full_design_uwh` over
+time. A negative or missing cycle count means the firmware did not provide a
+usable count. These observations do not prove that the separate firmware
+charge ceiling is active.
+
 In the optional Beryl section, the expected healthy shape is one `tailscaled`,
 one Mihomo `clash`, zero `netifyd`, and running Tailscale/OpenClash services.
 `router_oom_kills_current_boot` is cumulative until the router reboots; it does

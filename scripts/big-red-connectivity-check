@@ -318,6 +318,18 @@ battery=/sys/class/power_supply/BAT0
 if [ -r "$battery/status" ]; then
     printf 'battery_status=%s\n' "$(cat "$battery/status")"
     printf 'battery_capacity_percent=%s\n' "$(cat "$battery/capacity" 2>/dev/null || true)"
+    if [ -r "$battery/energy_now" ]; then
+        printf 'battery_energy_now_uwh=%s\n' "$(cat "$battery/energy_now")"
+    fi
+    if [ -r "$battery/energy_full" ]; then
+        printf 'battery_energy_full_uwh=%s\n' "$(cat "$battery/energy_full")"
+    fi
+    if [ -r "$battery/energy_full_design" ]; then
+        printf 'battery_energy_full_design_uwh=%s\n' "$(cat "$battery/energy_full_design")"
+    fi
+    if [ -r "$battery/cycle_count" ]; then
+        printf 'battery_cycle_count=%s\n' "$(cat "$battery/cycle_count")"
+    fi
 fi
 
 printf '\nBluetooth summary:\n'
