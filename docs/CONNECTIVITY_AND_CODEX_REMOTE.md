@@ -54,8 +54,10 @@ https://learn.chatgpt.com/docs/remote-connections
 The host-health section reads CPU-package temperature/critical thresholds from
 hwmon. When the root filesystem is directly backed by an NVMe namespace, it
 binds that controller to its own hwmon child for temperature/critical thresholds
-and makes one five-second, noninteractive, read-only SMART-log request. It
-prints only health counters: critical warnings, spare, wear,
+and makes one noninteractive, read-only SMART-log request. The request receives
+TERM after five seconds and KILL one second later if it has not exited. The
+validated fixed-field projection is captured completely before the diagnostic
+labels SMART available. It prints only health counters: critical warnings, spare, wear,
 media/error-log counts, unsafe shutdowns, and time above warning/critical
 temperature. It never prints the drive model, serial number, firmware, device
 path, namespace size, or raw SMART payload. `nvme_smart=unavailable` means the

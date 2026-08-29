@@ -122,6 +122,99 @@ codex_local_control_socket_state() {
     fi
 }
 
+nvme_health_summary() {
+    nvme_controller=$1
+    if [ -z "$nvme_controller" ] || ! command -v nvme >/dev/null 2>&1; then
+        printf 'nvme_smart=unavailable\n'
+        return
+    fi
+    if ! nvme_smart=$(read_nvme_smart "$nvme_controller"); then
+        printf 'nvme_smart=unavailable\n'
+        return
+    fi
+    if ! nvme_health=$(printf '%s\n' "$nvme_smart" | jq -er '
+        if (
+            (.critical_warning | type) == "number" and
+            (.avail_spare | type) == "number" and
+            (.spare_thresh | type) == "number" and
+            (.percent_used | type) == "number" and
+            (.media_errors | type) == "number" and
+            (.num_err_log_entries | type) == "number" and
+            (.unsafe_shutdowns | type) == "number" and
+            (.warning_temp_time | type) == "number" and
+            (.critical_comp_time | type) == "number"
+        ) then
+            [
+                "nvme_critical_warning=" + (.critical_warning | tostring),
+                "nvme_available_spare_percent=" + (.avail_spare | tostring),
+                "nvme_spare_threshold_percent=" + (.spare_thresh | tostring),
+                "nvme_percentage_used=" + (.percent_used | tostring),
+                "nvme_media_errors=" + (.media_errors | tostring),
+                "nvme_error_log_entries=" + (.num_err_log_entries | tostring),
+                "nvme_unsafe_shutdowns=" + (.unsafe_shutdowns | tostring),
+                "nvme_warning_temperature_time_minutes=" +
+                    (.warning_temp_time | tostring),
+                "nvme_critical_temperature_time_minutes=" +
+                    (.critical_comp_time | tostring)
+            ] | join("\n")
+        else
+            error("invalid NVMe SMART health payload")
+        end
+    ' 2>/dev/null); then
+        printf 'nvme_smart=unavailable\n'
+        return
+    fi
+    printf 'nvme_smart=available\n%s\n' "$nvme_health"
+}
+
+read_nvme_smart() {
+    nvme_controller=$1
+    nvme_output=$(mktemp "${TMPDIR:-/tmp}/big-red-nvme-health.XXXXXX") || return 1
+    setsid sudo -n nvme smart-log "$nvme_controller" --output-format=json \
+        >"$nvme_output" 2>/dev/null &
+    nvme_probe_pid=$!
+
+    attempts=0
+    while kill -0 "$nvme_probe_pid" 2>/dev/null && [ "$attempts" -lt 50 ]; do
+        sleep 0.1
+        attempts=$((attempts + 1))
+    done
+    if kill -0 "$nvme_probe_pid" 2>/dev/null; then
+        /usr/bin/kill -TERM -- "-$nvme_probe_pid" 2>/dev/null || true
+        attempts=0
+        while kill -0 "$nvme_probe_pid" 2>/dev/null && [ "$attempts" -lt 10 ]; do
+            sleep 0.1
+            attempts=$((attempts + 1))
+        done
+        if kill -0 "$nvme_probe_pid" 2>/dev/null; then
+            /usr/bin/kill -KILL -- "-$nvme_probe_pid" 2>/dev/null || true
+            attempts=0
+            while kill -0 "$nvme_probe_pid" 2>/dev/null && \
+                [ "$attempts" -lt 10 ]; do
+                sleep 0.1
+                attempts=$((attempts + 1))
+            done
+        fi
+        if ! kill -0 "$nvme_probe_pid" 2>/dev/null; then
+            wait "$nvme_probe_pid" 2>/dev/null || true
+        fi
+        rm -f -- "$nvme_output"
+        return 1
+    fi
+
+    if wait "$nvme_probe_pid" && nvme_smart=$(cat "$nvme_output"); then
+        rm -f -- "$nvme_output"
+        printf '%s\n' "$nvme_smart"
+        return 0
+    fi
+    rm -f -- "$nvme_output"
+    return 1
+}
+
+if [ "${BIG_RED_CONNECTIVITY_CHECK_FUNCTIONS_ONLY:-0}" = 1 ]; then
+    return 0
+fi
+
 printf 'timestamp=%s\n' "$(date --iso-8601=seconds)"
 printf 'hostname=%s\n' "$(hostname)"
 if ip -4 -brief address show wlp0s20f3 2>/dev/null | awk 'NF >= 3 {found = 1} END {exit !found}' ; then
@@ -285,35 +378,7 @@ printf 'nvme_composite_temperature_millic=%s\n' \
     "$(child_hwmon_metric "$root_nvme_hwmon" Composite input)"
 printf 'nvme_composite_critical_millic=%s\n' \
     "$(child_hwmon_metric "$root_nvme_hwmon" Composite crit)"
-if [ -n "$nvme_controller" ] && command -v nvme >/dev/null 2>&1 && \
-    nvme_smart=$(timeout 5s sudo -n nvme smart-log "$nvme_controller" \
-        --output-format=json 2>/dev/null) && \
-    printf '%s\n' "$nvme_smart" | jq -e '
-        (.critical_warning | type) == "number" and
-        (.avail_spare | type) == "number" and
-        (.spare_thresh | type) == "number" and
-        (.percent_used | type) == "number" and
-        (.media_errors | type) == "number" and
-        (.num_err_log_entries | type) == "number" and
-        (.unsafe_shutdowns | type) == "number" and
-        (.warning_temp_time | type) == "number" and
-        (.critical_comp_time | type) == "number"
-    ' >/dev/null 2>&1; then
-    printf 'nvme_smart=available\n'
-    printf '%s\n' "$nvme_smart" | jq -r '
-        "nvme_critical_warning=" + (.critical_warning | tostring),
-        "nvme_available_spare_percent=" + (.avail_spare | tostring),
-        "nvme_spare_threshold_percent=" + (.spare_thresh | tostring),
-        "nvme_percentage_used=" + (.percent_used | tostring),
-        "nvme_media_errors=" + (.media_errors | tostring),
-        "nvme_error_log_entries=" + (.num_err_log_entries | tostring),
-        "nvme_unsafe_shutdowns=" + (.unsafe_shutdowns | tostring),
-        "nvme_warning_temperature_time_minutes=" + (.warning_temp_time | tostring),
-        "nvme_critical_temperature_time_minutes=" + (.critical_comp_time | tostring)
-    '
-else
-    printf 'nvme_smart=unavailable\n'
-fi
+nvme_health_summary "$nvme_controller"
 battery=/sys/class/power_supply/BAT0
 if [ -r "$battery/status" ]; then
     printf 'battery_status=%s\n' "$(cat "$battery/status")"
