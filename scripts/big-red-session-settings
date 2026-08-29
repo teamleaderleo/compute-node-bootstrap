@@ -13,6 +13,13 @@ gsettings set org.gnome.desktop.session idle-delay 'uint32 600'
 gsettings set org.gnome.desktop.screensaver lock-enabled false
 gsettings set org.gnome.desktop.screensaver lock-delay 'uint32 0'
 
+# GNOME search is for human files, not 30+ GiB of repositories, build trees,
+# dependency caches, and language module stores. Code search belongs to rg and
+# project-aware editors; keeping it out of LocalSearch avoids useless extractor
+# churn and known MIME misclassification of files such as Go's *.mod.
+gsettings set org.freedesktop.Tracker3.Miner.Files index-recursive-directories \
+  "['&DESKTOP', '&DOCUMENTS', '&DOWNLOAD', '&MUSIC', '&PICTURES', '&VIDEOS']"
+
 # Start this exact panel near 40% at each login. Local brightness keys remain
 # free to change it afterward. Fail open if hardware/session identity drifts.
 if command -v gdctl >/dev/null 2>&1 &&

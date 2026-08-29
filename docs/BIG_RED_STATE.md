@@ -56,6 +56,7 @@ Tailscale SSH itself is off. Tailscale supplies private reachability; the normal
 - Linux IPv4/IPv6 forwarding is enabled.
 - `big-red` advertises a Tailscale exit node and the route is approved.
 - Codex CLI 0.150.1 and the official preview Linux ChatGPT/Codex desktop app 26.825.31414 are installed.
+- GNOME LocalSearch indexes the standard Desktop/Documents/Downloads/media folders, not all of `$HOME`. Repositories, build trees, and language caches use project-aware search (`rg`, editors) instead of desktop metadata extraction.
 
 ## Quick checks
 
@@ -70,6 +71,12 @@ systemctl is-enabled sleep.target suspend.target hibernate.target hybrid-sleep.t
 The expected results are `static`, `static`, `masked`, `masked`: suspend is available, while hibernate and hybrid sleep remain disabled.
 
 Rollback to the former always-awake node policy is explicit but no longer recommended for family use: change the three `HandleLidSwitch*` values in `/etc/systemd/logind.conf.d/60-unattended-node.conf` to `ignore`, mask `sleep.target` and `suspend.target`, then run `sudo systemctl reload systemd-logind`. Reapply the tracked configuration and unmask those two targets to restore the current family-safe policy.
+
+GNOME LocalSearch previously indexed all of `$HOME`, reached Go module caches, misclassified `*.mod` files as audio, and later segfaulted once. The service restarted successfully, but that work has no value for Quarry/Glaeda development. Restore the distribution-wide-home search scope, if ever wanted, with:
+
+```bash
+gsettings reset org.freedesktop.Tracker3.Miner.Files index-recursive-directories
+```
 
 ## Router status and later migration
 
