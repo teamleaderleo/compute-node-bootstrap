@@ -39,7 +39,8 @@ https://learn.chatgpt.com/docs/remote-connections
   server-side keepalive every 45 seconds and tolerates four missed replies.
 - `/usr/local/bin/big-red-connectivity-check`, sourced from
   `scripts/big-red-connectivity-check`, prints a bounded, credential-free
-  health snapshot. It summarizes services, sleep policy, Tailscale reachability,
+  health snapshot. It summarizes services, sleep targets, effective GNOME
+  screen/idle behavior, effective logind lid actions, Tailscale reachability,
   DNS Fake-IP classification, Chrony, capacity/power, Bluetooth noise, and the
   ChatGPT service/process state without printing full network addresses. When
   the purpose-specific `ssh beryl7` key is available on the Beryl LAN, it also
@@ -152,6 +153,15 @@ An answer in `198.18.0.0/15` for `controlplane.tailscale.com`, an Ubuntu NTP
 pool, or `ntp-bootstrap.ubuntu.com` means the corresponding router exception is
 missing or was not applied. Real answers were observed for all of them after
 the fixes.
+
+The expected family-safe desktop shape is a 600-second blanking delay, ambient
+brightness off, idle dimming to 30%, screen locking off, both idle-suspend
+actions set to `nothing` with zero-second disabled timeouts, and the power
+button left `interactive` for GNOME. The three effective lid actions should be
+`suspend`, while logind's ordinary idle action should be `ignore`. These fields
+are read-only evidence; the diagnostic never blanks the panel, locks, suspends,
+or changes a setting. The raw/max panel backlight values report the current
+local choice, not a health threshold.
 
 In the optional Beryl section, the expected healthy shape is one `tailscaled`,
 one Mihomo `clash`, zero `netifyd`, and running Tailscale/OpenClash services.

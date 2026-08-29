@@ -21,6 +21,39 @@ ping_class() {
     esac
 }
 
+gsettings_scalar() {
+    value=$(gsettings get "$1" "$2" 2>/dev/null) || {
+        printf 'unavailable\n'
+        return
+    }
+    case "$value" in
+        uint32\ *) printf '%s\n' "${value#uint32 }" ;;
+        \'*\')
+            value=${value#\'}
+            printf '%s\n' "${value%\'}"
+            ;;
+        '') printf 'unavailable\n' ;;
+        *) printf '%s\n' "$value" ;;
+    esac
+}
+
+logind_value() {
+    systemd-analyze cat-config systemd/logind.conf 2>/dev/null | awk -F= -v key="$1" '
+        {
+            name=$1
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", name)
+        }
+        name == key {
+            value=$2
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+        }
+        END {
+            if (value == "") value="default"
+            print value
+        }
+    '
+}
+
 printf 'timestamp=%s\n' "$(date --iso-8601=seconds)"
 printf 'hostname=%s\n' "$(hostname)"
 if ip -4 -brief address show wlp0s20f3 2>/dev/null | awk 'NF >= 3 {found = 1} END {exit !found}' ; then
@@ -41,6 +74,27 @@ printf '\nSleep invariants:\n'
 for target in sleep.target suspend.target hibernate.target hybrid-sleep.target; do
     printf '%s=%s\n' "$target" "$(systemctl is-enabled "$target" 2>/dev/null || true)"
 done
+
+printf '\nDesktop and lid power:\n'
+printf 'screen_idle_delay_seconds=%s\n' "$(gsettings_scalar org.gnome.desktop.session idle-delay)"
+printf 'screen_ambient_brightness_enabled=%s\n' "$(gsettings_scalar org.gnome.settings-daemon.plugins.power ambient-enabled)"
+printf 'screen_idle_dim=%s\n' "$(gsettings_scalar org.gnome.settings-daemon.plugins.power idle-dim)"
+printf 'screen_idle_brightness_percent=%s\n' "$(gsettings_scalar org.gnome.settings-daemon.plugins.power idle-brightness)"
+printf 'screen_lock_enabled=%s\n' "$(gsettings_scalar org.gnome.desktop.screensaver lock-enabled)"
+printf 'idle_suspend_ac_timeout_seconds=%s\n' "$(gsettings_scalar org.gnome.settings-daemon.plugins.power sleep-inactive-ac-timeout)"
+printf 'idle_suspend_ac_action=%s\n' "$(gsettings_scalar org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type)"
+printf 'idle_suspend_battery_timeout_seconds=%s\n' "$(gsettings_scalar org.gnome.settings-daemon.plugins.power sleep-inactive-battery-timeout)"
+printf 'idle_suspend_battery_action=%s\n' "$(gsettings_scalar org.gnome.settings-daemon.plugins.power sleep-inactive-battery-type)"
+printf 'power_button_action=%s\n' "$(gsettings_scalar org.gnome.settings-daemon.plugins.power power-button-action)"
+printf 'lid_switch_action=%s\n' "$(logind_value HandleLidSwitch)"
+printf 'lid_switch_external_power_action=%s\n' "$(logind_value HandleLidSwitchExternalPower)"
+printf 'lid_switch_docked_action=%s\n' "$(logind_value HandleLidSwitchDocked)"
+printf 'logind_idle_action=%s\n' "$(logind_value IdleAction)"
+backlight=/sys/class/backlight/intel_backlight
+if [ -r "$backlight/brightness" ] && [ -r "$backlight/max_brightness" ]; then
+    printf 'panel_backlight_raw=%s\n' "$(cat "$backlight/brightness")"
+    printf 'panel_backlight_max=%s\n' "$(cat "$backlight/max_brightness")"
+fi
 
 printf '\nTailscale summary:\n'
 if tailscale status --json 2>/dev/null | jq -r '
