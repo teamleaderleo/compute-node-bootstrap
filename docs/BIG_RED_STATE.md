@@ -16,7 +16,7 @@ Observed on 2026-08-28 after the Ubuntu installation. This file intentionally co
 
 The OEM 140 W USB-C charger is recognized correctly. Linux's standard power-supply interface exposes no battery threshold, but a later read-only audit verified the model-specific Xiaomi MIFS charge-care method in this machine's own ACPI tables. See [the guarded 80% runbook](BIG_RED_CHARGE_LIMIT.md).
 
-As of 2026-08-29, the charge cap remains inactive and the battery reports 100%. Ubuntu's `acpi-call-dkms` package built a module for kernel `7.0.0-30-generic` and signed it with the machine-local DKMS key, but Secure Boot correctly rejected it because that key has not yet been physically enrolled. The model-locked helper is installed at `/usr/local/sbin/big-red-charge-limit`; no charge command, boot service, module-load declaration, or udev re-arm rule has been applied. Finish the attended MOK enrollment and reversible test before enabling persistence. Do not disable Secure Boot to bypass this gate.
+As of 2026-08-29, the charge cap remains inactive and the battery reports 100%. Ubuntu's `acpi-call-dkms` package built a module for kernel `7.0.0-30-generic` and signed it with the machine-local DKMS key, but Secure Boot correctly rejected it because that key has not yet been physically enrolled. The model-locked helper is installed at `/usr/local/sbin/big-red-charge-limit`; no charge command, boot service, module-load declaration, or udev re-arm rule has been applied. A briefly staged MOK request was revoked before reboot so ordinary family restarts remain uneventful; there is currently no pending MOK action. Re-stage it only immediately before the attended enrollment and reversible test. Do not disable Secure Boot to bypass this gate.
 
 ## Operator access
 
@@ -47,7 +47,7 @@ Tailscale SSH itself is off. Tailscale supplies private reachability; the normal
 
 - `ssh`, `tailscaled`, NetworkManager, `networkd-dispatcher` and unattended upgrades start at boot.
 - Tailscale key expiry is disabled for `big-red`.
-- GNOME automatic suspend and ambient brightness are disabled. Idle dimming is enabled, and the display blanks after 10 minutes of inactivity without locking or suspending the host.
+- GNOME automatic suspend and ambient brightness are disabled. Idle dimming is enabled, and the display blanks after 10 minutes of inactivity without locking or suspending the host. The internal panel currently uses its native 3072x1920 mode at 165 Hz and 150% scale.
 - systemd sleep, suspend, hibernate and hybrid-sleep targets are masked.
 - Closing the lid does nothing, including on battery.
 - Wi-Fi power saving is disabled.
@@ -101,9 +101,21 @@ for the exact change, verification evidence, Mac/phone notes, and rollback.
 
 ## Display power update — 2026-08-29
 
-The internal display now dims when idle and blanks after 10 minutes. Local input wakes it immediately. This does not stop ChatGPT, SSH, Tailscale, builds, or other background work; automatic suspend and screen locking remain disabled. To restore the previous never-blank behavior:
+The internal display runs its native 3072x1920 mode at 165 Hz and 150% scale, dims when idle, and blanks after 10 minutes. Local input wakes the display immediately. Blanking does not stop ChatGPT, SSH, Tailscale, builds, or other background work; automatic suspend and screen locking remain disabled.
+
+A native 120 Hz test applied successfully and survived an immediate blank/wake cycle, but the shared graphical session later reasserted 165 Hz twice while other roots and GNOME Remote Desktop were active. Retry only in a quiet, locally observed window, then verify after blank/wake, Remote Desktop connection, relogin, and reboot before making it policy:
+
+```bash
+gdctl set --persistent --layout-mode logical \
+  --logical-monitor --primary --scale 1.5 \
+  --monitor eDP-1 --mode '3072x1920@120.001'
+```
+
+Restore the previous never-blank behavior with:
 
 ```bash
 gsettings set org.gnome.settings-daemon.plugins.power idle-dim false
 gsettings set org.gnome.desktop.session idle-delay 'uint32 0'
 ```
+
+For transport, closing the lid is not a sleep action. Power the laptop off and wait for lights/fans to stop before putting it in a bag. For ordinary desk use or movies, leave the Balanced profile selected; full-screen media should inhibit idle blanking through GNOME's standard mechanism.
