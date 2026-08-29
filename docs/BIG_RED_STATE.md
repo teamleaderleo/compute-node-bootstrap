@@ -43,6 +43,20 @@ While the Mac is on the same Big Brouter LAN, `ssh big-red-lan` is a secondary s
 
 Tailscale SSH itself is off. Tailscale supplies private reachability; the normal OpenSSH service supplies authentication. This avoids the recurring browser approval that the tailnet's SSH check policy caused.
 
+Outbound GitHub access uses a separate, purpose-specific Ed25519 identity:
+
+```text
+~/.ssh/id_ed25519_github_big_red_codex
+SHA256:1MtOsAKGhX9YPp1pLfwIAIgRfktQT5havzVmJsHaQSc
+```
+
+GitHub registered the corresponding public key as `big-red Codex GitHub
+2026-08-29`. `~/.ssh/config` binds it only to `github.com` with
+`IdentitiesOnly yes`; GitHub CLI and the canonical Leo-owned clones under
+`/home/leo/Projects` use SSH transport. This is intentionally distinct from
+the Mac-side `~/.ssh/id_ed25519_big_red` identity used to enter this host. Do
+not copy either private key between machines or replace one with the other.
+
 ## Unattended behavior
 
 - `ssh`, `tailscaled`, NetworkManager, `networkd-dispatcher` and unattended upgrades start at boot.
