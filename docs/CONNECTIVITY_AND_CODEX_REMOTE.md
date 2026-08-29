@@ -156,9 +156,14 @@ the fixes.
 In the optional Beryl section, the expected healthy shape is one `tailscaled`,
 one Mihomo `clash`, zero `netifyd`, and running Tailscale/OpenClash services.
 `router_oom_kills_current_boot` is cumulative until the router reboots; it does
-not imply that each invocation found a new OOM. Compare the count and process
-identity across checks. The router probe is diagnostic only: it never restarts
-a service or changes a router setting.
+not imply that each invocation found a new OOM. `router_uptime_seconds` and
+`router_latest_oom_age_seconds` use the router's monotonic boot clock, so the
+latter can prove how long the current boot has survived since its most recent
+OOM without depending on wall-clock parsing. It is `not_observed` when the
+current boot has no matching OOM and `unknown` if the kernel-log timestamp
+cannot be parsed. Compare the count, age, and process identity across checks.
+The router probe is diagnostic only: it never restarts a service or changes a
+router setting.
 
 The Tailscale health note that some peers advertise routes while
 `--accept-routes` is false is intentional on `big-red`: the Beryl advertises
