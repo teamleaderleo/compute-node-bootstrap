@@ -49,6 +49,17 @@ packages=(
   ripgrep
   sqlite3
   hyperfine
+  just
+  fzf
+  fd-find
+  bat
+  zoxide
+  btop
+  git-delta
+  fonts-jetbrains-mono
+  gnome-screenshot
+  gnome-shell-extension-manager
+  gnome-tweaks
   libreoffice-writer
   libreoffice-calc
   libreoffice-impress
@@ -59,6 +70,14 @@ packages=(
   remmina
   xdg-utils
 )
+
+devx_fragment_relative=.config/big-red/devx.bash
+devx_fragment="$operator_home/$devx_fragment_relative"
+aliases_file="$operator_home/.bash_aliases"
+# The generated shell must expand its own HOME, not the provisioning shell's.
+# shellcheck disable=SC2016
+devx_source_line='[ -r "$HOME/.config/big-red/devx.bash" ] && . "$HOME/.config/big-red/devx.bash"'
+monospace_font='JetBrains Mono 11'
 
 # One reviewed desktop application per ordinary local file-handling job.
 associations=(
@@ -96,22 +115,76 @@ as_operator() {
     "$@"
 }
 
+devx_fragment_content() {
+  cat <<'EOF'
+# Managed by compute-node-bootstrap.
+alias fd='fdfind'
+alias bat='batcat'
+
+if [[ $- == *i* ]]; then
+    eval "$(zoxide init bash)"
+    [ -r /usr/share/doc/fzf/examples/completion.bash ] && . /usr/share/doc/fzf/examples/completion.bash
+    [ -r /usr/share/doc/fzf/examples/key-bindings.bash ] && . /usr/share/doc/fzf/examples/key-bindings.bash
+fi
+EOF
+}
+
+install_devx_config() {
+  local operator_group temporary
+  if [[ -L "$aliases_file" ]]; then
+    printf 'error: refusing symlinked .bash_aliases\n' >&2
+    return 1
+  fi
+  operator_group=$(id -gn "$operator_user")
+  temporary=$(mktemp)
+  trap 'rm -f "$temporary"' RETURN
+  devx_fragment_content >"$temporary"
+  sudo install -d -o "$operator_user" -g "$operator_group" -m 0755 "$(dirname "$devx_fragment")"
+  sudo install -o "$operator_user" -g "$operator_group" -m 0644 "$temporary" "$devx_fragment"
+  as_operator touch "$aliases_file"
+  if ! grep -Fqx "$devx_source_line" "$aliases_file"; then
+    printf '\n%s\n' "$devx_source_line" | sudo -u "$operator_user" tee -a "$aliases_file" >/dev/null
+  fi
+  # A remote sudo invocation may not inherit the graphical session bus. Use a
+  # private bus so dconf commits instead of warning and returning false success.
+  as_operator dbus-run-session -- \
+    gsettings set org.gnome.desktop.interface monospace-font-name "$monospace_font"
+}
+
 print_plan() {
   printf 'operator_user=%s\n' "$operator_user"
   printf 'packages:'
   printf ' %s' "${packages[@]}"
   printf '\nassociations:\n'
   printf '  %s\n' "${associations[@]}"
+  printf 'shell_fragment=%s\n' "$devx_fragment_relative"
+  printf 'monospace_font=%s\n' "$monospace_font"
 }
 
 verify() {
-  local failed=0 entry desktop mime actual
+  local failed=0 entry desktop mime actual expected_fragment
   for package in "${packages[@]}"; do
     if ! dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -qx 'install ok installed'; then
       printf 'missing package: %s\n' "$package" >&2
       failed=1
     fi
   done
+
+  expected_fragment=$(devx_fragment_content)
+  if [[ ! -f "$devx_fragment" ]] || [[ $(<"$devx_fragment") != "$expected_fragment" ]]; then
+    printf 'managed shell fragment mismatch: %s\n' "$devx_fragment_relative" >&2
+    failed=1
+  fi
+  if [[ ! -f "$aliases_file" ]] || ! grep -Fqx "$devx_source_line" "$aliases_file"; then
+    printf 'missing shell fragment source in .bash_aliases\n' >&2
+    failed=1
+  fi
+  actual=$(as_operator gsettings get org.gnome.desktop.interface monospace-font-name || true)
+  if [[ "$actual" != "'$monospace_font'" ]]; then
+    printf 'monospace font mismatch: expected=%s actual=%s\n' \
+      "$monospace_font" "${actual:-unset}" >&2
+    failed=1
+  fi
 
   for entry in "${associations[@]}"; do
     IFS='|' read -r desktop mime <<<"$entry"
@@ -142,6 +215,7 @@ case "$mode" in
     print_plan
     sudo apt-get update
     sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "${packages[@]}"
+    install_devx_config
     for entry in "${associations[@]}"; do
       IFS='|' read -r desktop mime <<<"$entry"
       as_operator xdg-mime default "$desktop" "$mime"
