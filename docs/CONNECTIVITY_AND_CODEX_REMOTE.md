@@ -43,7 +43,7 @@ https://learn.chatgpt.com/docs/remote-connections
   screen/idle behavior, effective logind lid actions, Tailscale reachability,
   DNS Fake-IP classification, Chrony, loaded systemd-definition drift,
   path-free memory/swap/`/tmp` capacity, thermal/power state, Bluetooth noise,
-  and the
+  a redacted Big Red-to-Beryl local-link point sample, and the
   ChatGPT launcher, desktop, Codex remote-control process, and private local
   control-listener state without printing process arguments, socket paths, or
   full network addresses. When
@@ -53,6 +53,18 @@ https://learn.chatgpt.com/docs/remote-connections
   and CPU thermal-cooling state. That optional probe is key-only and capped at
   seven seconds; it reports `router_ssh=unavailable` instead of prompting when
   the router or identity is unavailable.
+
+The `Beryl local link` section resolves exactly one IPv4 default route without
+printing its gateway address or interface name. For a connected Wi-Fi default
+route, it retains only signal, frequency, negotiated receive/transmit bitrate,
+and channel width from `iw`. It also sends five subsecond ICMP samples to that
+local gateway and retains only sent/received counts, loss percentage, average
+RTT, and ping mdev. SSID, BSSID, addresses, interface names, packet counters,
+and individual replies never enter the report. Missing, ambiguous, malformed,
+or non-Wi-Fi evidence becomes `unavailable`; the probe never changes a route,
+radio, channel, power level, SQM policy, or service. Negotiated bitrate is link
+state rather than application throughput, and the five-packet RTT/mdev values
+are a point sample rather than a loaded-latency or Internet-speed result.
 
 `/usr/local/bin/big-red-connectivity-check` is the canonical installed file.
 The bootstrap also maintains `/usr/local/sbin/big-red-connectivity-check` as a
@@ -264,6 +276,12 @@ their reported maxima and the configured temperature policy under the same
 workload instead of treating one SoC-temperature sample as a fan failure.
 The router probe is diagnostic only: it never restarts a service or changes a
 router setting.
+
+Interpret local-link fields together. Signal and negotiated rates help explain
+the radio state at the same instant; gateway RTT/loss isolate the first hop from
+the roughly 600 Mb/s subscribed WAN ceiling. Do not treat one clean point sample
+as an SQM decision or one low negotiated rate as a purchase trigger. Loaded
+latency and sustained throughput remain separate owner-aware experiments.
 
 The Tailscale health note that some peers advertise routes while
 `--accept-routes` is false is intentional on `big-red`: the Beryl advertises

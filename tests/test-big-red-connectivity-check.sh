@@ -141,6 +141,83 @@ tmp_used_percent=unavailable'
     exit 1
 }
 
+link_bin=$test_root/link-bin
+mkdir "$link_bin"
+cat >"$link_bin/ip" <<'EOF'
+#!/bin/sh
+printf 'default via 192.0.2.1 dev privatewifi proto dhcp metric 600\n'
+EOF
+cat >"$link_bin/iw" <<'EOF'
+#!/bin/sh
+[ "$1:$2:$3" = 'dev:privatewifi:link' ] || exit 1
+cat <<'OUTPUT'
+Connected to 00:11:22:33:44:55 (on privatewifi)
+	SSID: private-network-name
+	freq: 5220.0
+	RX: 999999 bytes (123 packets)
+	TX: 888888 bytes (456 packets)
+	signal: -44 dBm
+	rx bitrate: 432.3 MBit/s 80MHz HE-MCS 4 HE-NSS 2
+	tx bitrate: 600.4 MBit/s 80MHz HE-MCS 11 HE-NSS 1
+OUTPUT
+EOF
+cat >"$link_bin/ping" <<'EOF'
+#!/bin/sh
+[ "$9" = '192.0.2.1' ] || exit 1
+cat <<'OUTPUT'
+PING 192.0.2.1 (192.0.2.1) 56(84) bytes of data.
+
+--- 192.0.2.1 ping statistics ---
+5 packets transmitted, 5 received, 0% packet loss, time 402ms
+rtt min/avg/max/mdev = 1.149/1.227/1.420/0.097 ms
+OUTPUT
+EOF
+chmod 0755 "$link_bin"/*
+link_output=$(beryl_local_link_summary \
+    "$link_bin/ip" "$link_bin/iw" "$link_bin/ping")
+expected_link_output='wifi_signal_dbm=-44
+wifi_frequency_mhz=5220
+wifi_channel_width_mhz=80
+wifi_rx_bitrate_mbps=432.3
+wifi_tx_bitrate_mbps=600.4
+gateway_ping_samples_sent=5
+gateway_ping_samples_received=5
+gateway_packet_loss_percent=0
+gateway_rtt_avg_ms=1.227
+gateway_rtt_mdev_ms=0.097'
+[ "$link_output" = "$expected_link_output" ] || {
+    printf 'Beryl local-link projection mismatch:\n%s\n' "$link_output" >&2
+    exit 1
+}
+case "$link_output" in
+    *private*|*192.0.2.1*|*00:11:22:33:44:55*)
+        printf 'Beryl local-link projection leaked identity\n' >&2
+        exit 1
+        ;;
+esac
+
+cat >"$link_bin/ip" <<'EOF'
+#!/bin/sh
+printf 'default via malformed-address dev privatewifi\n'
+EOF
+unavailable_link_output=$(beryl_local_link_summary \
+    "$link_bin/ip" "$link_bin/iw" "$link_bin/ping")
+expected_unavailable_link_output='wifi_signal_dbm=unavailable
+wifi_frequency_mhz=unavailable
+wifi_channel_width_mhz=unavailable
+wifi_rx_bitrate_mbps=unavailable
+wifi_tx_bitrate_mbps=unavailable
+gateway_ping_samples_sent=unavailable
+gateway_ping_samples_received=unavailable
+gateway_packet_loss_percent=unavailable
+gateway_rtt_avg_ms=unavailable
+gateway_rtt_mdev_ms=unavailable'
+[ "$unavailable_link_output" = "$expected_unavailable_link_output" ] || {
+    printf 'invalid Beryl local-link evidence did not fail closed:\n%s\n' \
+        "$unavailable_link_output" >&2
+    exit 1
+}
+
 systemd_bin=$test_root/systemd-bin
 mkdir "$systemd_bin"
 cat >"$systemd_bin/systemctl-clean" <<'EOF'
