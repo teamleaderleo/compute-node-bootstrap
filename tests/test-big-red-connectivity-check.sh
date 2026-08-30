@@ -141,6 +141,50 @@ tmp_used_percent=unavailable'
     exit 1
 }
 
+systemd_bin=$test_root/systemd-bin
+mkdir "$systemd_bin"
+cat >"$systemd_bin/systemctl-clean" <<'EOF'
+#!/bin/sh
+printf 'no\n\nno\n\nno\n'
+EOF
+cat >"$systemd_bin/systemctl-stale" <<'EOF'
+#!/bin/sh
+printf 'no\n\nyes\n\nno\n'
+EOF
+cat >"$systemd_bin/systemctl-malformed" <<'EOF'
+#!/bin/sh
+printf 'no\n\nmaybe\n'
+EOF
+cat >"$systemd_bin/systemctl-empty" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+cat >"$systemd_bin/systemctl-failed" <<'EOF'
+#!/bin/sh
+exit 1
+EOF
+chmod 0755 "$systemd_bin"/*
+
+[ "$(systemd_daemon_reload_state "$systemd_bin/systemctl-clean")" = no ] || {
+    printf 'clean systemd definitions were mislabeled\n' >&2
+    exit 1
+}
+[ "$(systemd_daemon_reload_state "$systemd_bin/systemctl-stale")" = yes ] || {
+    printf 'stale systemd definitions were not detected\n' >&2
+    exit 1
+}
+for unavailable_systemctl in \
+    "$systemd_bin/systemctl-malformed" \
+    "$systemd_bin/systemctl-empty" \
+    "$systemd_bin/systemctl-failed"; do
+    [ "$(systemd_daemon_reload_state "$unavailable_systemctl")" = \
+        unavailable ] || {
+        printf 'invalid systemd evidence did not fail closed: %s\n' \
+            "$unavailable_systemctl" >&2
+        exit 1
+    }
+done
+
 timeout_bin=$test_root/timeout-bin
 mkdir "$timeout_bin"
 cat >"$timeout_bin/nvme" <<'EOF'
