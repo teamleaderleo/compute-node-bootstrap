@@ -14,6 +14,7 @@ sudo apt install -y \
   jq \
   tmux \
   htop \
+  nvme-cli \
   pciutils \
   usbutils \
   unzip \

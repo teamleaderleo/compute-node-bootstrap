@@ -41,7 +41,7 @@ https://learn.chatgpt.com/docs/remote-connections
   `scripts/big-red-connectivity-check`, prints a bounded, credential-free
   health snapshot. It summarizes services, sleep targets, effective GNOME
   screen/idle behavior, effective logind lid actions, Tailscale reachability,
-  DNS Fake-IP classification, Chrony, capacity/power, Bluetooth noise, and the
+  DNS Fake-IP classification, Chrony, capacity/thermal/power state, Bluetooth noise, and the
   ChatGPT launcher, desktop, Codex remote-control process, and private local
   control-listener state without printing process arguments, socket paths, or
   full network addresses. When
@@ -50,6 +50,27 @@ https://learn.chatgpt.com/docs/remote-connections
   count, and SoC temperature. That optional probe is key-only and capped at
   seven seconds; it reports `router_ssh=unavailable` instead of prompting when
   the router or identity is unavailable.
+
+The host-health section reads CPU-package temperature/critical thresholds from
+hwmon. When the root filesystem is directly backed by an NVMe namespace, it
+binds that controller to its own hwmon child for temperature/critical thresholds
+and makes one noninteractive, read-only SMART-log request in an owned process
+group. The request receives TERM after five seconds and any surviving member of
+that exact group receives KILL one second later. Signal/exit cleanup also kills
+the owned group, reaps its leader, and removes its private temporary output. The
+supervisor binds ownership to the invoking shell's PID and Linux process start
+time. That identity remains stable through shell function subshells and command
+substitution, so a disappearing invoker is still detected. Cleanup targets the
+leader PID until `setsid` has established the future process group, closing
+caller-interruption, command-substitution, and pre-PGID races without signaling
+the caller's own group.
+The validated fixed-field projection is captured completely before the diagnostic
+labels SMART available. It prints only health counters: critical warnings, spare, wear,
+media/error-log counts, unsafe shutdowns, and time above warning/critical
+temperature. It never prints the drive model, serial number, firmware, device
+path, namespace size, or raw SMART payload. `nvme_smart=unavailable` means the
+bounded read was unavailable or failed validation; it is not itself a drive
+failure.
 
 The ChatGPT user service was enabled without restarting the running desktop app.
 It takes ownership on the next graphical login or reboot. During the current
@@ -174,6 +195,21 @@ button left `interactive` for GNOME. The three effective lid actions should be
 are read-only evidence; the diagnostic never blanks the panel, locks, suspends,
 or changes a setting. The raw/max panel backlight values report the current
 local choice, not a health threshold.
+
+For the host thermal fields, values are millidegrees Celsius; compare the
+package/composite input with its reported critical threshold rather than using
+a generic laptop temperature cutoff. An NVMe `critical_warning` of zero, spare
+above its threshold, and zero media errors are the healthy baseline. Wear and
+unsafe-shutdown counters are cumulative observations: compare them across
+checks, and do not label an old nonzero count as a new event without a prior
+sample.
+
+`battery_capacity_percent` is current state of charge, not battery health. The
+energy fields are raw micro-watt-hours reported by the battery firmware;
+compare `battery_energy_full_uwh` with `battery_energy_full_design_uwh` over
+time. A negative or missing cycle count means the firmware did not provide a
+usable count. These observations do not prove that the separate firmware
+charge ceiling is active.
 
 In the optional Beryl section, the expected healthy shape is one `tailscaled`,
 one Mihomo `clash`, zero `netifyd`, and running Tailscale/OpenClash services.
