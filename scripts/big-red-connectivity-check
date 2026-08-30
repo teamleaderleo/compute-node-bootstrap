@@ -765,8 +765,8 @@ END {
             age=\"unknown\"
         }
     }
-    printf \"router_oom_kills_current_boot=%d\\n\", count + 0
-    printf \"router_latest_oom_age_seconds=%s\\n\", age
+    printf \"router_oom_kills_observed_log=%d\\n\", count + 0
+    printf \"router_latest_oom_age_seconds_observed_log=%s\\n\", age
 }"
 printf "router_soc_temp_millic=%s\n" "$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || true)"
 printf "router_fan_policy_enabled=%s\n" "$(config_uint glfan.globals.enabled)"
