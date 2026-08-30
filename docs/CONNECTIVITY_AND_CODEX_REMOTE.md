@@ -41,8 +41,9 @@ https://learn.chatgpt.com/docs/remote-connections
   `scripts/big-red-connectivity-check`, prints a bounded, credential-free
   health snapshot. It summarizes services, sleep targets, effective GNOME
   screen/idle behavior, effective logind lid actions, Tailscale reachability,
-  DNS Fake-IP classification, Chrony, path-free memory/swap/`/tmp` capacity,
-  thermal/power state, Bluetooth noise, and the
+  DNS Fake-IP classification, Chrony, loaded systemd-definition drift,
+  path-free memory/swap/`/tmp` capacity, thermal/power state, Bluetooth noise,
+  and the
   ChatGPT launcher, desktop, Codex remote-control process, and private local
   control-listener state without printing process arguments, socket paths, or
   full network addresses. When
@@ -87,6 +88,15 @@ evidence of active memory distress: interpret it with PSI, current paging and
 the workload that populated it. The diagnostic does not sample live paging or
 walk `/tmp`; it never prints names, contents, owners, or paths below that mount,
 and it never changes or removes anything.
+
+The core-service section also reports
+`core_units_need_daemon_reload=yes|no|unavailable`. It asks systemd whether any
+of the five loaded core unit definitions differ from their current on-disk
+sources. `yes` is an observation, not permission to restart a service: first
+exclude an active package or configuration transaction, then use
+`systemctl daemon-reload` if appropriate. A daemon reload re-reads unit
+definitions but does not itself restart those services. The diagnostic never
+performs the reload.
 
 On `big-red`, `/tmp` is a systemd-managed tmpfs sized to 50% of RAM. Small
 temporary files belong there, but multi-GiB repository copies, Cargo targets,

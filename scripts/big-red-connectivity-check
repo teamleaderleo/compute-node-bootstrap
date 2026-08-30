@@ -215,6 +215,46 @@ EOF
     printf '%s_used_percent=%s\n' "$filesystem_prefix" "$filesystem_percent"
 }
 
+systemd_daemon_reload_state() {
+    systemctl_command=${1:-systemctl}
+    if [ "$#" -gt 0 ]; then
+        shift
+    fi
+    if [ "$#" -eq 0 ]; then
+        set -- NetworkManager.service ssh.service tailscaled.service \
+            avahi-daemon.service chrony.service
+    fi
+
+    reload_values=$("$systemctl_command" show "$@" \
+        --property=NeedDaemonReload --value 2>/dev/null) || {
+        printf 'unavailable\n'
+        return
+    }
+    reload_state=no
+    reload_value_seen=no
+    while IFS= read -r reload_value; do
+        case "$reload_value" in
+            yes)
+                reload_state=yes
+                reload_value_seen=yes
+                ;;
+            no) reload_value_seen=yes ;;
+            '') ;;
+            *)
+                printf 'unavailable\n'
+                return
+                ;;
+        esac
+    done <<EOF
+$reload_values
+EOF
+    if [ "$reload_value_seen" != yes ]; then
+        printf 'unavailable\n'
+        return
+    fi
+    printf '%s\n' "$reload_state"
+}
+
 codex_remote_control_pids() {
     pgrep -u "$(id -u)" -f \
         '^[^[:space:]]*/codex app-server --remote-control --listen unix://$' \
@@ -444,6 +484,8 @@ for unit in NetworkManager ssh tailscaled avahi-daemon chrony; do
 done
 printf 'system_failed_units=%s\n' "$(systemctl --failed --no-legend --plain 2>/dev/null | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')"
 printf 'user_failed_units=%s\n' "$(systemctl --user --failed --no-legend --plain 2>/dev/null | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')"
+printf 'core_units_need_daemon_reload=%s\n' \
+    "$(systemd_daemon_reload_state systemctl)"
 printf 'network_connectivity=%s\n' "$(nmcli -t -f CONNECTIVITY general 2>/dev/null || true)"
 
 printf '\nSleep invariants:\n'
