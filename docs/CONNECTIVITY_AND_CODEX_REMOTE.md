@@ -49,7 +49,8 @@ https://learn.chatgpt.com/docs/remote-connections
   full network addresses. When
   the purpose-specific `ssh beryl7` key is available on the Beryl LAN, it also
   prints router service/process counts, RSS, available memory, current-boot OOM
-  count, and SoC temperature. That optional probe is key-only and capped at
+  count, SoC temperature, factory fan-policy values, requested PWM-fan state,
+  and CPU thermal-cooling state. That optional probe is key-only and capped at
   seven seconds; it reports `router_ssh=unavailable` instead of prompting when
   the router or identity is unavailable.
 
@@ -254,6 +255,13 @@ latter can prove how long the current boot has survived since its most recent
 OOM without depending on wall-clock parsing. It is `not_observed` when the
 current boot has no matching OOM and `unknown` if the kernel-log timestamp
 cannot be parsed. Compare the count, age, and process identity across checks.
+The Beryl fan fields are raw read-only state. `router_pwm_fan_current_state`
+is the requested cooling-device value, not measured RPM; this firmware exposes
+no tachometer through the inspected interface. A zero
+`router_cpu_thermal_current_state` means the kernel CPU-frequency cooling
+device is not currently applying a cooling state. Compare both values with
+their reported maxima and the configured temperature policy under the same
+workload instead of treating one SoC-temperature sample as a fan failure.
 The router probe is diagnostic only: it never restarts a service or changes a
 router setting.
 

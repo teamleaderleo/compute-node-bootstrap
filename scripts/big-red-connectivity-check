@@ -565,9 +565,35 @@ process_rss_kib() {
     fi
 }
 
+bounded_uint() {
+    case "$1" in
+        ""|*[!0-9]*) printf "unknown\n" ;;
+        *) printf "%s\n" "$1" ;;
+    esac
+}
+
+config_uint() {
+    config_value=$(uci -q get "$1" 2>/dev/null)
+    bounded_uint "$config_value"
+}
+
+cooling_metric() {
+    expected_type=$1
+    metric_name=$2
+    for cooling_directory in /sys/class/thermal/cooling_device*; do
+        [ -r "$cooling_directory/type" ] || continue
+        [ "$(cat "$cooling_directory/type")" = "$expected_type" ] || continue
+        cooling_value=$(cat "$cooling_directory/$metric_name" 2>/dev/null)
+        bounded_uint "$cooling_value"
+        return
+    done
+    printf "unknown\n"
+}
+
 printf "router_tailscale_service=%s\n" "$(service_state tailscale)"
 printf "router_openclash_service=%s\n" "$(service_state openclash)"
 printf "router_netifyd_service=%s\n" "$(service_state netifyd)"
+printf "router_fan_service=%s\n" "$(service_state gl_fan)"
 printf "router_tailscaled_processes=%s\n" "$(process_count tailscaled)"
 printf "router_clash_processes=%s\n" "$(process_count clash)"
 printf "router_netifyd_processes=%s\n" "$(process_count netifyd)"
@@ -599,6 +625,13 @@ END {
     printf \"router_latest_oom_age_seconds=%s\\n\", age
 }"
 printf "router_soc_temp_millic=%s\n" "$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || true)"
+printf "router_fan_policy_enabled=%s\n" "$(config_uint glfan.globals.enabled)"
+printf "router_fan_policy_temperature_celsius=%s\n" "$(config_uint glfan.globals.temperature)"
+printf "router_fan_policy_warning_celsius=%s\n" "$(config_uint glfan.globals.warn_temperature)"
+printf "router_pwm_fan_current_state=%s\n" "$(cooling_metric pwm-fan cur_state)"
+printf "router_pwm_fan_max_state=%s\n" "$(cooling_metric pwm-fan max_state)"
+printf "router_cpu_thermal_current_state=%s\n" "$(cooling_metric thermal-cpufreq-0 cur_state)"
+printf "router_cpu_thermal_max_state=%s\n" "$(cooling_metric thermal-cpufreq-0 max_state)"
 ' 2>/dev/null); then
     printf 'router_ssh=available\n'
     printf '%s\n' "$router_health"
