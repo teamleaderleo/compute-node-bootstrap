@@ -215,6 +215,147 @@ EOF
     printf '%s_used_percent=%s\n' "$filesystem_prefix" "$filesystem_percent"
 }
 
+wifi_link_metrics() {
+    wifi_device=$1
+    wifi_iw=${2:-iw}
+
+    wifi_output=$(LC_ALL=C "$wifi_iw" dev "$wifi_device" link 2>/dev/null) ||
+        wifi_output=
+    printf '%s\n' "$wifi_output" | awk '
+        function decimal(value) {
+            return value ~ /^[0-9]+([.][0-9]+)?$/
+        }
+        function integer(value) {
+            return value ~ /^[0-9]+$/
+        }
+        /^[[:space:]]*freq:/ && decimal($2) {
+            frequency = $2 + 0
+        }
+        /^[[:space:]]*signal:/ && $2 ~ /^-[0-9]+$/ && $3 == "dBm" {
+            signal = $2
+        }
+        /^[[:space:]]*rx bitrate:/ && decimal($3) && $4 == "MBit/s" {
+            rx = $3
+            for (field = 5; field <= NF; field++) {
+                if ($field ~ /^[0-9]+MHz$/) {
+                    rx_width = $field
+                    sub(/MHz$/, "", rx_width)
+                    break
+                }
+            }
+        }
+        /^[[:space:]]*tx bitrate:/ && decimal($3) && $4 == "MBit/s" {
+            tx = $3
+            for (field = 5; field <= NF; field++) {
+                if ($field ~ /^[0-9]+MHz$/) {
+                    tx_width = $field
+                    sub(/MHz$/, "", tx_width)
+                    break
+                }
+            }
+        }
+        END {
+            width = "unavailable"
+            if (integer(rx_width) && integer(tx_width) &&
+                rx_width == tx_width) width = rx_width
+            else if (integer(rx_width) && tx_width == "") width = rx_width
+            else if (integer(tx_width) && rx_width == "") width = tx_width
+            printf "wifi_signal_dbm=%s\n", signal == "" ? "unavailable" : signal
+            printf "wifi_frequency_mhz=%s\n", frequency == "" ? "unavailable" : frequency
+            printf "wifi_channel_width_mhz=%s\n", width
+            printf "wifi_rx_bitrate_mbps=%s\n", rx == "" ? "unavailable" : rx
+            printf "wifi_tx_bitrate_mbps=%s\n", tx == "" ? "unavailable" : tx
+        }
+    '
+}
+
+gateway_ping_metrics() {
+    gateway_address=$1
+    gateway_ping=${2:-ping}
+
+    gateway_output=$(LC_ALL=C timeout 4s "$gateway_ping" \
+        -n -q -c 5 -i 0.1 -W 1 "$gateway_address" 2>/dev/null || true)
+    printf '%s\n' "$gateway_output" | awk '
+        function decimal(value) {
+            return value ~ /^[0-9]+([.][0-9]+)?$/
+        }
+        /packets transmitted/ {
+            transmitted = $1
+            received = $4
+            loss = $6
+            sub(/%$/, "", loss)
+            if (transmitted !~ /^[0-9]+$/ || received !~ /^[0-9]+$/ ||
+                loss !~ /^[0-9]+([.][0-9]+)?$/) {
+                transmitted = ""
+                received = ""
+                loss = ""
+            }
+        }
+        /^rtt min\/avg\/max\/mdev = / {
+            split($4, values, "/")
+            if (decimal(values[2]) && decimal(values[4])) {
+                average = values[2]
+                variation = values[4]
+            }
+        }
+        END {
+            printf "gateway_ping_samples_sent=%s\n", transmitted == "" ? "unavailable" : transmitted
+            printf "gateway_ping_samples_received=%s\n", received == "" ? "unavailable" : received
+            printf "gateway_packet_loss_percent=%s\n", loss == "" ? "unavailable" : loss
+            printf "gateway_rtt_avg_ms=%s\n", average == "" ? "unavailable" : average
+            printf "gateway_rtt_mdev_ms=%s\n", variation == "" ? "unavailable" : variation
+        }
+    '
+}
+
+beryl_local_link_summary() {
+    link_ip=${1:-ip}
+    link_iw=${2:-iw}
+    link_ping=${3:-ping}
+
+    link_route=$(
+        "$link_ip" -4 route show default 2>/dev/null | awk '
+            /^default / {
+                count++
+                gateway = ""
+                device = ""
+                for (field = 1; field <= NF; field++) {
+                    if ($field == "via" && field < NF) gateway = $(field + 1)
+                    if ($field == "dev" && field < NF) device = $(field + 1)
+                }
+            }
+            END {
+                if (count != 1 || gateway == "" || device == "") exit 1
+                print gateway, device
+            }
+        '
+    ) || link_route=
+    link_gateway=
+    link_device=
+    link_extra=
+    IFS=' ' read -r link_gateway link_device link_extra <<EOF
+$link_route
+EOF
+    case "$link_gateway" in
+        ''|*[!0-9.]*) link_gateway= ;;
+    esac
+    case "$link_device" in
+        ''|*[!0-9A-Za-z_.:-]*) link_device= ;;
+    esac
+    if [ -n "$link_extra" ]; then
+        link_gateway=
+        link_device=
+    fi
+
+    if [ -z "$link_gateway" ] || [ -z "$link_device" ]; then
+        wifi_link_metrics unavailable "$link_iw"
+        gateway_ping_metrics unavailable "$link_ping"
+        return
+    fi
+    wifi_link_metrics "$link_device" "$link_iw"
+    gateway_ping_metrics "$link_gateway" "$link_ping"
+}
+
 systemd_daemon_reload_state() {
     systemctl_command=${1:-systemctl}
     if [ "$#" -gt 0 ]; then
@@ -477,6 +618,9 @@ if ip -4 -brief address show wlp0s20f3 2>/dev/null | awk 'NF >= 3 {found = 1} EN
 else
     printf 'wifi_ipv4=absent\n'
 fi
+
+printf '\nBeryl local link:\n'
+beryl_local_link_summary
 
 printf '\nCore services:\n'
 for unit in NetworkManager ssh tailscaled avahi-daemon chrony; do
