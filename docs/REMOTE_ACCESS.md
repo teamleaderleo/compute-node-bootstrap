@@ -124,3 +124,62 @@ A GitHub self-hosted Actions runner establishes outbound connections to GitHub. 
 The completed machine uses conventional OpenSSH through Tailscale, has Tailscale SSH disabled, does not suspend automatically while open, suspends when its lid is deliberately closed, disables Wi-Fi power saving and permits passwordless remote administration. See [`BIG_RED_STATE.md`](BIG_RED_STATE.md) for the exact observed state and recovery commands.
 
 No supported battery charge-threshold interface was exposed by this laptop's installed firmware, so no charge ceiling was guessed or forced.
+
+## 9. GUI access and latency recovery
+
+The operator Mac has a saved Microsoft Windows App connection named **big-red (Tailscale tunnel)** with a saved credential entry named **big-red Ubuntu**. A LaunchAgent keeps a local port forward alive, so opening the saved device is enough; the RDP service is not exposed to the public internet.
+
+If the desktop is connected but sluggish, check the transport first:
+
+```bash
+tailscale ping big-red
+tailscale ping gl-mt3600be
+```
+
+`DERP(region)` means relayed. A literal IP address means direct. In the 2026-08-28 phone-hotspot test, Mac-to-`big-red` was relayed at 301-560 ms, while Mac-to-Beryl became direct at 38-71 ms. `big-red`'s Tailscale discovery traffic was leaving through the Bandwagon/OpenClash egress, which prevented a direct peer path.
+
+The planned low-latency route is:
+
+```text
+Mac -> direct Tailscale -> Beryl 7 -> 192.168.8.107:3389 -> big-red
+```
+
+The matching SSH recovery alias on the operator Mac is `big-red-beryl`. It uses the same approved
+Beryl subnet route and the existing Big Red key, while deliberately bypassing Big Red's own
+Tailscale transport:
+
+```sshconfig
+Host big-red-beryl
+    HostName 192.168.8.107
+    User leo
+    IdentityFile ~/.ssh/id_ed25519_big_red
+    IdentitiesOnly yes
+    HostKeyAlias 192.168.5.18
+```
+
+If `ssh big-red` fails during a Beryl routing experiment, do not assume Big Red is down and do not
+start with the remote router web UI. Enable route acceptance on the Mac, then test the direct path:
+
+```bash
+tailscale set --accept-routes=true
+ssh big-red-beryl
+```
+
+From that shell, `ssh beryl7` uses Big Red's purpose-specific router key. This recovery chain was
+proven on 2026-08-30 while Big Red's tailnet address was unreachable; both SSH and RDP at
+`192.168.8.107` remained healthy.
+
+On Beryl firmware 4.9, enable **APPLICATIONS -> Tailscale -> Advertise LAN Subnets**, then approve `192.168.8.0/24` for `gl-mt3600be` in the Tailscale admin console. This is GL.iNet's supported subnet-router feature. It is separate from **Custom Exit Nodes**, which stays off for this change.
+
+The second bottleneck was RDP video encoding. `big-red` now has `intel-media-va-driver-non-free` installed and verified for H.264 hardware encoding:
+
+```bash
+ssh big-red 'vainfo --display drm --device /dev/dri/renderD128'
+```
+
+Look for `VAProfileH264High` with `VAEntrypointEncSlice`.
+
+Official references:
+
+- GL.iNet Tailscale LAN access: https://docs.gl-inet.com/router/en/4/interface_guide/tailscale/
+- Tailscale connection types: https://tailscale.com/docs/reference/connection-types
