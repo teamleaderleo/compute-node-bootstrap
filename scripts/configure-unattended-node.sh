@@ -95,6 +95,10 @@ fi
 
 printf '\n== Install the bounded big-red diagnostic ==\n'
 install -o root -g root -m 0755 "${script_dir}/big-red-connectivity-check" /usr/local/bin/big-red-connectivity-check
+# An early manual installation used sbin, which precedes bin in the operator's
+# PATH. Keep that exact legacy pathname as an alias so it cannot shadow a newer
+# canonical install with stale bytes.
+ln -sfnT ../bin/big-red-connectivity-check /usr/local/sbin/big-red-connectivity-check
 
 printf '\n== Enable Linux forwarding for the future Tailscale exit node ==\n'
 cat >/etc/sysctl.d/99-tailscale.conf <<'EOF'

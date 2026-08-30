@@ -60,6 +60,87 @@ export BIG_RED_CONNECTIVITY_CHECK_FUNCTIONS_ONLY
 . "$diagnostic"
 unset BIG_RED_CONNECTIVITY_CHECK_FUNCTIONS_ONLY
 
+cat >"$test_root/meminfo" <<'EOF'
+MemTotal:       32768000 kB
+MemAvailable:   24576000 kB
+SwapTotal:       8388608 kB
+SwapFree:        5242880 kB
+EOF
+cat >"$test_root/pressure-memory" <<'EOF'
+some avg10=1.25 avg60=0.50 avg300=0.20 total=1234
+full avg10=0.03 avg60=0.01 avg300=0.00 total=56
+EOF
+memory_output=$(memory_capacity_summary \
+    "$test_root/meminfo" "$test_root/pressure-memory")
+expected_memory_output='memory_available_kib=24576000
+swap_total_kib=8388608
+swap_used_kib=3145728
+memory_psi_some_avg10=1.25
+memory_psi_full_avg10=0.03'
+[ "$memory_output" = "$expected_memory_output" ] || {
+    printf 'memory capacity projection mismatch:\n%s\n' "$memory_output" >&2
+    exit 1
+}
+
+cat >"$test_root/meminfo-invalid-swap" <<'EOF'
+MemAvailable:   1024 kB
+SwapTotal:      1024 kB
+SwapFree:       2048 kB
+EOF
+invalid_swap_output=$(memory_capacity_summary \
+    "$test_root/meminfo-invalid-swap" "$test_root/missing-pressure")
+expected_invalid_swap_output='memory_available_kib=1024
+swap_total_kib=1024
+swap_used_kib=unavailable
+memory_psi_some_avg10=unavailable
+memory_psi_full_avg10=unavailable'
+[ "$invalid_swap_output" = "$expected_invalid_swap_output" ] || {
+    printf 'invalid memory evidence did not fail closed:\n%s\n' \
+        "$invalid_swap_output" >&2
+    exit 1
+}
+
+capacity_bin=$test_root/capacity-bin
+mkdir "$capacity_bin"
+cat >"$capacity_bin/findmnt" <<'EOF'
+#!/bin/sh
+printf 'tmpfs\n'
+EOF
+cat >"$capacity_bin/df" <<'EOF'
+#!/bin/sh
+printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
+printf 'tmpfs 16384000 286720 16097280 2%% /tmp\n'
+EOF
+chmod 0755 "$capacity_bin/findmnt" "$capacity_bin/df"
+filesystem_output=$(filesystem_capacity_summary /tmp tmp \
+    "$capacity_bin/findmnt" "$capacity_bin/df")
+expected_filesystem_output='tmp_filesystem_type=tmpfs
+tmp_total_kib=16384000
+tmp_used_kib=286720
+tmp_used_percent=2%'
+[ "$filesystem_output" = "$expected_filesystem_output" ] || {
+    printf 'filesystem capacity projection mismatch:\n%s\n' \
+        "$filesystem_output" >&2
+    exit 1
+}
+cat >"$capacity_bin/df" <<'EOF'
+#!/bin/sh
+printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
+printf 'tmpfs private-name invalid 16097280 nope /tmp\n'
+EOF
+chmod 0755 "$capacity_bin/df"
+invalid_filesystem_output=$(filesystem_capacity_summary /tmp tmp \
+    "$capacity_bin/findmnt" "$capacity_bin/df")
+expected_invalid_filesystem_output='tmp_filesystem_type=tmpfs
+tmp_total_kib=unavailable
+tmp_used_kib=unavailable
+tmp_used_percent=unavailable'
+[ "$invalid_filesystem_output" = "$expected_invalid_filesystem_output" ] || {
+    printf 'invalid filesystem evidence did not fail closed:\n%s\n' \
+        "$invalid_filesystem_output" >&2
+    exit 1
+}
+
 timeout_bin=$test_root/timeout-bin
 mkdir "$timeout_bin"
 cat >"$timeout_bin/nvme" <<'EOF'
@@ -393,4 +474,4 @@ unset SMART_TEST_JQ_COUNT
     exit 1
 }
 
-printf 'big-red connectivity SMART regressions: passed\n'
+printf 'big-red connectivity regressions: passed\n'

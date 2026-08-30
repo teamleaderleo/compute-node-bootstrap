@@ -95,6 +95,126 @@ child_hwmon_metric() {
     printf 'unavailable\n'
 }
 
+meminfo_kib() {
+    meminfo_path=$1
+    meminfo_field=$2
+
+    meminfo_value=$(awk -v field="$meminfo_field" '
+        $1 == field ":" && $2 ~ /^[0-9]+$/ && $3 == "kB" {
+            print $2
+            found = 1
+            exit
+        }
+        END { if (!found) exit 1 }
+    ' "$meminfo_path" 2>/dev/null) || {
+        printf 'unavailable\n'
+        return
+    }
+    printf '%s\n' "$meminfo_value"
+}
+
+psi_avg10() {
+    pressure_path=$1
+    pressure_class=$2
+
+    pressure_value=$(awk -v class="$pressure_class" '
+        $1 == class {
+            for (field_index = 2; field_index <= NF; field_index++) {
+                if ($field_index ~ /^avg10=/) {
+                    value = $field_index
+                    sub(/^avg10=/, "", value)
+                    if (value ~ /^[0-9]+([.][0-9]+)?$/) {
+                        print value
+                        found = 1
+                    }
+                    exit
+                }
+            }
+        }
+        END { if (!found) exit 1 }
+    ' "$pressure_path" 2>/dev/null) || {
+        printf 'unavailable\n'
+        return
+    }
+    printf '%s\n' "$pressure_value"
+}
+
+memory_capacity_summary() {
+    memory_meminfo_path=${1:-/proc/meminfo}
+    memory_pressure_path=${2:-/proc/pressure/memory}
+
+    memory_available_value=$(meminfo_kib "$memory_meminfo_path" MemAvailable)
+    swap_total_value=$(meminfo_kib "$memory_meminfo_path" SwapTotal)
+    swap_free_value=$(meminfo_kib "$memory_meminfo_path" SwapFree)
+    case "$swap_total_value:$swap_free_value" in
+        *[!0-9:]*|:*|*:) swap_used_value=unavailable ;;
+        *)
+            if [ "$swap_free_value" -le "$swap_total_value" ]; then
+                swap_used_value=$((swap_total_value - swap_free_value))
+            else
+                swap_used_value=unavailable
+            fi
+            ;;
+    esac
+
+    printf 'memory_available_kib=%s\n' "$memory_available_value"
+    printf 'swap_total_kib=%s\n' "$swap_total_value"
+    printf 'swap_used_kib=%s\n' "$swap_used_value"
+    printf 'memory_psi_some_avg10=%s\n' \
+        "$(psi_avg10 "$memory_pressure_path" some)"
+    printf 'memory_psi_full_avg10=%s\n' \
+        "$(psi_avg10 "$memory_pressure_path" full)"
+}
+
+filesystem_capacity_summary() {
+    filesystem_path=$1
+    filesystem_prefix=$2
+    filesystem_findmnt=${3:-findmnt}
+    filesystem_df=${4:-df}
+
+    filesystem_type=$("$filesystem_findmnt" -n -o FSTYPE --target \
+        "$filesystem_path" 2>/dev/null | awk 'NR == 1 && NF { print; exit }')
+    if [ -z "$filesystem_type" ]; then
+        filesystem_type=unavailable
+    fi
+
+    filesystem_capacity=$("$filesystem_df" -Pk -- "$filesystem_path" \
+        2>/dev/null | awk 'NR == 2 { print $2, $3, $5 }')
+    filesystem_total=
+    filesystem_used=
+    filesystem_percent=
+    filesystem_extra=
+    IFS=' ' read -r filesystem_total filesystem_used filesystem_percent \
+        filesystem_extra <<EOF
+$filesystem_capacity
+EOF
+    if [ -n "$filesystem_extra" ]; then
+        filesystem_total=unavailable
+        filesystem_used=unavailable
+        filesystem_percent=unavailable
+    fi
+    case "$filesystem_total:$filesystem_used" in
+        *[!0-9:]*|:*|*:)
+            filesystem_total=unavailable
+            filesystem_used=unavailable
+            ;;
+    esac
+    case "$filesystem_percent" in
+        *%)
+            filesystem_percent_value=${filesystem_percent%\%}
+            case "$filesystem_percent_value" in
+                ''|*[!0-9]*) filesystem_percent=unavailable ;;
+            esac
+            ;;
+        *) filesystem_percent=unavailable ;;
+    esac
+
+    printf '%s_filesystem_type=%s\n' "$filesystem_prefix" "$filesystem_type"
+    printf '%s_total_kib=%s\n' "$filesystem_prefix" "$filesystem_total"
+    printf '%s_used_kib=%s\n' "$filesystem_prefix" "$filesystem_used"
+    printf '%s_used_percent=%s\n' "$filesystem_prefix" "$filesystem_percent"
+}
+
 codex_remote_control_pids() {
     pgrep -u "$(id -u)" -f \
         '^[^[:space:]]*/codex app-server --remote-control --listen unix://$' \
@@ -458,6 +578,8 @@ else
 fi
 
 printf '\nCapacity, thermals and power:\n'
+memory_capacity_summary /proc/meminfo /proc/pressure/memory
+filesystem_capacity_summary /tmp tmp
 printf 'root_used=%s\n' "$(df --output=pcent / 2>/dev/null | awk 'NR == 2 {gsub(/[[:space:]]/, ""); print}')"
 printf 'journal=%s\n' "$(journalctl --disk-usage 2>/dev/null | sed 's/^Archived and active journals take up //')"
 printf 'power_profile=%s\n' "$(powerprofilesctl get 2>/dev/null || true)"

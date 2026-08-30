@@ -41,7 +41,8 @@ https://learn.chatgpt.com/docs/remote-connections
   `scripts/big-red-connectivity-check`, prints a bounded, credential-free
   health snapshot. It summarizes services, sleep targets, effective GNOME
   screen/idle behavior, effective logind lid actions, Tailscale reachability,
-  DNS Fake-IP classification, Chrony, capacity/thermal/power state, Bluetooth noise, and the
+  DNS Fake-IP classification, Chrony, path-free memory/swap/`/tmp` capacity,
+  thermal/power state, Bluetooth noise, and the
   ChatGPT launcher, desktop, Codex remote-control process, and private local
   control-listener state without printing process arguments, socket paths, or
   full network addresses. When
@@ -50,6 +51,12 @@ https://learn.chatgpt.com/docs/remote-connections
   count, and SoC temperature. That optional probe is key-only and capped at
   seven seconds; it reports `router_ssh=unavailable` instead of prompting when
   the router or identity is unavailable.
+
+`/usr/local/bin/big-red-connectivity-check` is the canonical installed file.
+The bootstrap also maintains `/usr/local/sbin/big-red-connectivity-check` as a
+relative compatibility symlink because an early manual installation placed a
+separate copy there and `sbin` precedes `bin` in the operator's `PATH`. The
+alias prevents stale bytes from shadowing the canonical diagnostic.
 
 The host-health section reads CPU-package temperature/critical thresholds from
 hwmon. When the root filesystem is directly backed by an NVMe namespace, it
@@ -71,6 +78,23 @@ temperature. It never prints the drive model, serial number, firmware, device
 path, namespace size, or raw SMART payload. `nvme_smart=unavailable` means the
 bounded read was unavailable or failed validation; it is not itself a drive
 failure.
+
+The capacity section reports `MemAvailable`, total and currently used swap,
+the kernel memory-pressure `some`/`full` ten-second averages, and `/tmp`'s
+filesystem type, total/used KiB, and used percentage. These are raw
+observations, not a health verdict. In particular, high used swap alone is not
+evidence of active memory distress: interpret it with PSI, current paging and
+the workload that populated it. The diagnostic does not sample live paging or
+walk `/tmp`; it never prints names, contents, owners, or paths below that mount,
+and it never changes or removes anything.
+
+On `big-red`, `/tmp` is a systemd-managed tmpfs sized to 50% of RAM. Small
+temporary files belong there, but multi-GiB repository copies, Cargo targets,
+filesystem images, and retained experiment outputs belong in a route-owned
+disk-backed directory under `$HOME/.cache`, the canonical project target,
+or the owning experiment root. This placement rule avoids forcing reconstructible
+build output through RAM and swap; it is not a recommendation to set a global
+`TMPDIR` or to disable swap.
 
 The ChatGPT user service was enabled without restarting the running desktop app.
 It takes ownership on the next graphical login or reboot. During the current
