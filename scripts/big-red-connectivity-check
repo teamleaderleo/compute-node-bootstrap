@@ -167,12 +167,67 @@ nvme_health_summary() {
     printf 'nvme_smart=available\n%s\n' "$nvme_health"
 }
 
-read_nvme_smart() {
+read_nvme_smart() (
     nvme_controller=$1
+    nvme_output=
+    nvme_probe_pid=
+    nvme_probe_pgid=
+
+    nvme_probe_group_alive() {
+        [ -n "$nvme_probe_pgid" ] &&
+            /usr/bin/kill -0 -- "-$nvme_probe_pgid" 2>/dev/null
+    }
+
+    stop_nvme_probe_group() {
+        if nvme_probe_group_alive; then
+            /usr/bin/kill -TERM -- "-$nvme_probe_pgid" 2>/dev/null || true
+            attempts=0
+            while nvme_probe_group_alive && [ "$attempts" -lt 10 ]; do
+                sleep 0.1
+                attempts=$((attempts + 1))
+            done
+        fi
+        if nvme_probe_group_alive; then
+            /usr/bin/kill -KILL -- "-$nvme_probe_pgid" 2>/dev/null || true
+        fi
+        if [ -n "$nvme_probe_pid" ]; then
+            wait "$nvme_probe_pid" 2>/dev/null || true
+            nvme_probe_pid=
+        fi
+        attempts=0
+        while nvme_probe_group_alive && [ "$attempts" -lt 10 ]; do
+            sleep 0.1
+            attempts=$((attempts + 1))
+        done
+        if nvme_probe_group_alive; then
+            /usr/bin/kill -KILL -- "-$nvme_probe_pgid" 2>/dev/null || true
+        fi
+    }
+
+    # shellcheck disable=SC2329 # invoked by the traps below
+    cleanup_nvme_probe() {
+        cleanup_status=$1
+        trap - 0 HUP INT TERM
+        stop_nvme_probe_group
+        if [ -n "$nvme_output" ]; then
+            rm -f -- "$nvme_output"
+        fi
+        exit "$cleanup_status"
+    }
+
+    # This function always executes in its own subshell, so these traps cannot
+    # replace a caller's handlers when the diagnostic is sourced by tests or
+    # another read-only tool.
+    trap 'cleanup_nvme_probe "$?"' 0
+    trap 'cleanup_nvme_probe 129' HUP
+    trap 'cleanup_nvme_probe 130' INT
+    trap 'cleanup_nvme_probe 143' TERM
+
     nvme_output=$(mktemp "${TMPDIR:-/tmp}/big-red-nvme-health.XXXXXX") || return 1
     setsid sudo -n nvme smart-log "$nvme_controller" --output-format=json \
         >"$nvme_output" 2>/dev/null &
     nvme_probe_pid=$!
+    nvme_probe_pgid=$nvme_probe_pid
 
     attempts=0
     while kill -0 "$nvme_probe_pid" 2>/dev/null && [ "$attempts" -lt 50 ]; do
@@ -180,36 +235,27 @@ read_nvme_smart() {
         attempts=$((attempts + 1))
     done
     if kill -0 "$nvme_probe_pid" 2>/dev/null; then
-        /usr/bin/kill -TERM -- "-$nvme_probe_pid" 2>/dev/null || true
-        attempts=0
-        while kill -0 "$nvme_probe_pid" 2>/dev/null && [ "$attempts" -lt 10 ]; do
-            sleep 0.1
-            attempts=$((attempts + 1))
-        done
-        if kill -0 "$nvme_probe_pid" 2>/dev/null; then
-            /usr/bin/kill -KILL -- "-$nvme_probe_pid" 2>/dev/null || true
-            attempts=0
-            while kill -0 "$nvme_probe_pid" 2>/dev/null && \
-                [ "$attempts" -lt 10 ]; do
-                sleep 0.1
-                attempts=$((attempts + 1))
-            done
-        fi
-        if ! kill -0 "$nvme_probe_pid" 2>/dev/null; then
-            wait "$nvme_probe_pid" 2>/dev/null || true
-        fi
-        rm -f -- "$nvme_output"
+        stop_nvme_probe_group
         return 1
     fi
 
-    if wait "$nvme_probe_pid" && nvme_smart=$(cat "$nvme_output"); then
-        rm -f -- "$nvme_output"
+    if wait "$nvme_probe_pid"; then
+        nvme_status=0
+    else
+        nvme_status=$?
+    fi
+    nvme_probe_pid=
+    if nvme_probe_group_alive; then
+        stop_nvme_probe_group
+        return 1
+    fi
+    nvme_probe_pgid=
+    if [ "$nvme_status" -eq 0 ] && nvme_smart=$(cat "$nvme_output"); then
         printf '%s\n' "$nvme_smart"
         return 0
     fi
-    rm -f -- "$nvme_output"
     return 1
-}
+)
 
 if [ "${BIG_RED_CONNECTIVITY_CHECK_FUNCTIONS_ONLY:-0}" = 1 ]; then
     return 0

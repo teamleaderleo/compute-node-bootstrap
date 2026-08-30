@@ -54,9 +54,11 @@ https://learn.chatgpt.com/docs/remote-connections
 The host-health section reads CPU-package temperature/critical thresholds from
 hwmon. When the root filesystem is directly backed by an NVMe namespace, it
 binds that controller to its own hwmon child for temperature/critical thresholds
-and makes one noninteractive, read-only SMART-log request. The request receives
-TERM after five seconds and KILL one second later if it has not exited. The
-validated fixed-field projection is captured completely before the diagnostic
+and makes one noninteractive, read-only SMART-log request in an owned process
+group. The request receives TERM after five seconds and any surviving member of
+that exact group receives KILL one second later. Signal/exit cleanup also kills
+the owned group, reaps its leader, and removes its private temporary output.
+The validated fixed-field projection is captured completely before the diagnostic
 labels SMART available. It prints only health counters: critical warnings, spare, wear,
 media/error-log counts, unsafe shutdowns, and time above warning/critical
 temperature. It never prints the drive model, serial number, firmware, device

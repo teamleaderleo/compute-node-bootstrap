@@ -5,18 +5,26 @@ repository_root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 diagnostic=$repository_root/scripts/big-red-connectivity-check
 test_root=$(mktemp -d /tmp/big-red-connectivity-test.XXXXXX)
 pid_file=$test_root/timeout-pids
+interrupt_pid_file=$test_root/interruption-pids
 
 cleanup() {
-    if [ -r "$pid_file" ]; then
-        while read -r owned_pid _; do
-            case "$owned_pid" in
+    for owned_pid_file in "$pid_file" "$interrupt_pid_file"; do
+        [ -r "$owned_pid_file" ] || continue
+        while read -r owned_leader owned_child owned_pgid; do
+            for owned_pid in "$owned_leader" "$owned_child"; do
+                case "$owned_pid" in
+                    ''|*[!0-9]*) continue ;;
+                esac
+                if kill -0 "$owned_pid" 2>/dev/null; then
+                    kill -KILL "$owned_pid" 2>/dev/null || true
+                fi
+            done
+            case "$owned_pgid" in
                 ''|*[!0-9]*) continue ;;
             esac
-            if kill -0 "$owned_pid" 2>/dev/null; then
-                kill -KILL "$owned_pid" 2>/dev/null || true
-            fi
-        done <"$pid_file"
-    fi
+            /usr/bin/kill -KILL -- "-$owned_pgid" 2>/dev/null || true
+        done <"$owned_pid_file"
+    done
     if [ -d "$test_root" ]; then
         rm -r -- "$test_root"
     fi
@@ -39,11 +47,16 @@ EOF
 cat >"$timeout_bin/sudo" <<'EOF'
 #!/bin/sh
 pgid=$(ps -o pgid= -p "$$" | tr -d ' ')
-printf '%s %s\n' "$$" "$pgid" >"$SMART_TEST_PID_FILE"
-trap '' TERM
-while :; do
-    sleep 30
-done
+(
+    trap '' TERM
+    while :; do
+        sleep 30
+    done
+) &
+child=$!
+printf '%s %s %s\n' "$$" "$child" "$pgid" >"$SMART_TEST_PID_FILE"
+trap 'exit 0' TERM
+wait "$child"
 EOF
 chmod 0755 "$timeout_bin/nvme" "$timeout_bin/sudo"
 
@@ -67,13 +80,69 @@ unset SMART_TEST_PID_FILE
     printf 'timeout case escaped bound: %s seconds\n' "$elapsed" >&2
     exit 1
 }
-read -r timed_pid timed_pgid <"$pid_file"
-if kill -0 "$timed_pid" 2>/dev/null; then
-    printf 'timeout command survived: %s\n' "$timed_pid" >&2
-    exit 1
-fi
+read -r timed_pid timed_child timed_pgid <"$pid_file"
+for owned_pid in "$timed_pid" "$timed_child"; do
+    if kill -0 "$owned_pid" 2>/dev/null; then
+        printf 'timeout command survived: %s\n' "$owned_pid" >&2
+        exit 1
+    fi
+done
 if /usr/bin/kill -0 -- "-$timed_pgid" 2>/dev/null; then
     printf 'timeout process group survived: %s\n' "$timed_pgid" >&2
+    exit 1
+fi
+
+interrupt_tmp=$test_root/interruption-tmp
+mkdir "$interrupt_tmp"
+# shellcheck disable=SC2016 # $1 belongs to the isolated child shell
+if timeout -k 4s 1s env \
+    PATH="$timeout_bin:/usr/bin:/bin" \
+    TMPDIR="$interrupt_tmp" \
+    SMART_TEST_PID_FILE="$interrupt_pid_file" \
+    BIG_RED_CONNECTIVITY_CHECK_FUNCTIONS_ONLY=1 \
+    sh -c '. "$1"; read_nvme_smart /dev/nvme0 >/dev/null' \
+    sh "$diagnostic" 2>"$test_root/interruption-stderr"; then
+    printf 'interrupted SMART probe unexpectedly completed\n' >&2
+    exit 1
+else
+    interrupt_status=$?
+fi
+[ "$interrupt_status" -eq 124 ] || {
+    printf 'interrupted SMART probe returned %s, expected 124\n' \
+        "$interrupt_status" >&2
+    exit 1
+}
+read -r interrupted_pid interrupted_child interrupted_pgid \
+    <"$interrupt_pid_file"
+attempts=0
+while [ "$attempts" -lt 30 ]; do
+    if ! kill -0 "$interrupted_pid" 2>/dev/null &&
+        ! kill -0 "$interrupted_child" 2>/dev/null &&
+        ! /usr/bin/kill -0 -- "-$interrupted_pgid" 2>/dev/null; then
+        break
+    fi
+    sleep 0.1
+    attempts=$((attempts + 1))
+done
+for owned_pid in "$interrupted_pid" "$interrupted_child"; do
+    if kill -0 "$owned_pid" 2>/dev/null; then
+        printf 'interrupted command survived: %s\n' "$owned_pid" >&2
+        exit 1
+    fi
+done
+if /usr/bin/kill -0 -- "-$interrupted_pgid" 2>/dev/null; then
+    printf 'interrupted process group survived: %s\n' \
+        "$interrupted_pgid" >&2
+    exit 1
+fi
+attempts=0
+while find "$interrupt_tmp" -mindepth 1 -print -quit | grep -q . &&
+    [ "$attempts" -lt 30 ]; do
+    sleep 0.1
+    attempts=$((attempts + 1))
+done
+if find "$interrupt_tmp" -mindepth 1 -print -quit | grep -q .; then
+    printf 'interrupted SMART probe left a temporary file\n' >&2
     exit 1
 fi
 
@@ -104,6 +173,17 @@ SMART_TEST_JQ_COUNT=$projection_count
 export SMART_TEST_JQ_COUNT
 PATH=$projection_bin:/usr/bin:/bin
 export PATH
+trap_before=$(trap)
+read_nvme_smart /dev/nvme0 >"$test_root/direct-smart-output"
+trap_after=$(trap)
+[ "$trap_before" = "$trap_after" ] || {
+    printf 'SMART probe replaced caller traps\n' >&2
+    exit 1
+}
+grep -q '"critical_warning":0' "$test_root/direct-smart-output" || {
+    printf 'direct SMART probe lost its validated fixture output\n' >&2
+    exit 1
+}
 projection_output=$(nvme_health_summary /dev/nvme0)
 PATH=$original_path
 export PATH
