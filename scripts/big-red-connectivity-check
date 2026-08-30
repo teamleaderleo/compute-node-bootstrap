@@ -128,13 +128,33 @@ nvme_health_summary() (
         printf 'nvme_smart=unavailable\n'
         return
     fi
-    nvme_self_pid=$(/bin/sh -c 'printf %s "$PPID"')
-    nvme_caller_pid=$(
-        /usr/bin/ps -o ppid= -p "$nvme_self_pid" 2>/dev/null |
-            /usr/bin/tr -d ' '
-    )
-    case "$nvme_caller_pid" in
+    nvme_process_starttime() {
+        /usr/bin/awk '
+            {
+                line = $0
+                sub(/^.*\) /, "", line)
+                count = split(line, fields, / +/)
+                if (count < 20) {
+                    exit 1
+                }
+                print fields[20]
+            }
+        ' "/proc/$1/stat" 2>/dev/null
+    }
+
+    # POSIX shells preserve $$ in subshell environments. It therefore names
+    # the invoking shell both for a direct call and for result=$(function),
+    # unlike PPID, which can name an intermediate command-substitution shell.
+    nvme_owner_pid=$$
+    nvme_owner_starttime=$(nvme_process_starttime "$nvme_owner_pid")
+    case "$nvme_owner_pid" in
         ''|1|*[!0-9]*)
+            printf 'nvme_smart=unavailable\n'
+            return
+            ;;
+    esac
+    case "$nvme_owner_starttime" in
+        ''|*[!0-9]*)
             printf 'nvme_smart=unavailable\n'
             return
             ;;
@@ -153,13 +173,11 @@ nvme_health_summary() (
             /usr/bin/kill -0 "$nvme_probe_pid" 2>/dev/null
     }
 
-    nvme_caller_alive() {
-        current_parent=$(
-            /usr/bin/ps -o ppid= -p "$nvme_self_pid" 2>/dev/null |
-                /usr/bin/tr -d ' '
-        )
-        [ "$current_parent" = "$nvme_caller_pid" ] &&
-            /usr/bin/kill -0 "$nvme_caller_pid" 2>/dev/null
+    nvme_owner_alive() {
+        current_starttime=$(nvme_process_starttime "$nvme_owner_pid")
+        [ -n "$current_starttime" ] &&
+            [ "$current_starttime" = "$nvme_owner_starttime" ] &&
+            /usr/bin/kill -0 "$nvme_owner_pid" 2>/dev/null
     }
 
     stop_nvme_probe_group() {
@@ -223,7 +241,7 @@ nvme_health_summary() (
 
     attempts=0
     while nvme_probe_leader_alive && [ "$attempts" -lt 50 ]; do
-        if ! nvme_caller_alive; then
+        if ! nvme_owner_alive; then
             stop_nvme_probe_group
             return 1
         fi

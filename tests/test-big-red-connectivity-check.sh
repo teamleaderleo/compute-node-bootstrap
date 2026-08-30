@@ -6,9 +6,11 @@ diagnostic=$repository_root/scripts/big-red-connectivity-check
 test_root=$(mktemp -d /tmp/big-red-connectivity-test.XXXXXX)
 pid_file=$test_root/timeout-pids
 interrupt_pid_file=$test_root/interruption-pids
+substitution_pid_file=$test_root/substitution-pids
 race_pid_file=$test_root/race-probe-pids
 race_setsid_file=$test_root/race-setsid-pid
 interrupt_driver_pid=
+substitution_driver_pid=
 race_setsid_pid=
 
 cleanup() {
@@ -16,11 +18,19 @@ cleanup() {
         kill -0 "$interrupt_driver_pid" 2>/dev/null; then
         kill -KILL "$interrupt_driver_pid" 2>/dev/null || true
     fi
+    if [ -n "$substitution_driver_pid" ] &&
+        kill -0 "$substitution_driver_pid" 2>/dev/null; then
+        kill -KILL "$substitution_driver_pid" 2>/dev/null || true
+    fi
     if [ -n "$race_setsid_pid" ] &&
         kill -0 "$race_setsid_pid" 2>/dev/null; then
         kill -KILL "$race_setsid_pid" 2>/dev/null || true
     fi
-    for owned_pid_file in "$pid_file" "$interrupt_pid_file" "$race_pid_file"; do
+    for owned_pid_file in \
+        "$pid_file" \
+        "$interrupt_pid_file" \
+        "$substitution_pid_file" \
+        "$race_pid_file"; do
         [ -r "$owned_pid_file" ] || continue
         while read -r owned_leader owned_child owned_pgid; do
             for owned_pid in "$owned_leader" "$owned_child"; do
@@ -168,6 +178,76 @@ while find "$interrupt_tmp" -mindepth 1 -print -quit | grep -q . &&
 done
 if find "$interrupt_tmp" -mindepth 1 -print -quit | grep -q .; then
     printf 'interrupted SMART probe left a temporary file\n' >&2
+    exit 1
+fi
+
+substitution_tmp=$test_root/substitution-tmp
+mkdir "$substitution_tmp"
+# A command substitution inserts another shell between the function subshell
+# and its invoker. Killing the outer invoking shell must still tear down the
+# owned probe group and private output.
+# shellcheck disable=SC2016 # $1 belongs to the isolated child shell
+env \
+    PATH="$timeout_bin:/usr/bin:/bin" \
+    TMPDIR="$substitution_tmp" \
+    SMART_TEST_PID_FILE="$substitution_pid_file" \
+    BIG_RED_CONNECTIVITY_CHECK_FUNCTIONS_ONLY=1 \
+    sh -c '. "$1"; result=$(nvme_health_summary /dev/nvme0); printf "%s\n" "$result"' \
+    sh "$diagnostic" 2>"$test_root/substitution-stderr" &
+substitution_driver_pid=$!
+attempts=0
+while [ ! -r "$substitution_pid_file" ] && [ "$attempts" -lt 30 ]; do
+    sleep 0.1
+    attempts=$((attempts + 1))
+done
+[ -r "$substitution_pid_file" ] || {
+    printf 'command-substitution SMART probe never launched\n' >&2
+    exit 1
+}
+/usr/bin/kill -TERM "$substitution_driver_pid"
+attempts=0
+while kill -0 "$substitution_driver_pid" 2>/dev/null &&
+    [ "$attempts" -lt 30 ]; do
+    sleep 0.1
+    attempts=$((attempts + 1))
+done
+if kill -0 "$substitution_driver_pid" 2>/dev/null; then
+    printf 'command-substitution caller did not exit\n' >&2
+    exit 1
+fi
+wait "$substitution_driver_pid" 2>/dev/null || true
+substitution_driver_pid=
+read -r substitution_pid substitution_child substitution_pgid \
+    <"$substitution_pid_file"
+attempts=0
+while [ "$attempts" -lt 30 ]; do
+    if ! kill -0 "$substitution_pid" 2>/dev/null &&
+        ! kill -0 "$substitution_child" 2>/dev/null &&
+        ! /usr/bin/kill -0 -- "-$substitution_pgid" 2>/dev/null; then
+        break
+    fi
+    sleep 0.1
+    attempts=$((attempts + 1))
+done
+for owned_pid in "$substitution_pid" "$substitution_child"; do
+    if kill -0 "$owned_pid" 2>/dev/null; then
+        printf 'command-substitution probe survived: %s\n' "$owned_pid" >&2
+        exit 1
+    fi
+done
+if /usr/bin/kill -0 -- "-$substitution_pgid" 2>/dev/null; then
+    printf 'command-substitution process group survived: %s\n' \
+        "$substitution_pgid" >&2
+    exit 1
+fi
+attempts=0
+while find "$substitution_tmp" -mindepth 1 -print -quit | grep -q . &&
+    [ "$attempts" -lt 30 ]; do
+    sleep 0.1
+    attempts=$((attempts + 1))
+done
+if find "$substitution_tmp" -mindepth 1 -print -quit | grep -q .; then
+    printf 'command-substitution interruption left a temporary file\n' >&2
     exit 1
 fi
 

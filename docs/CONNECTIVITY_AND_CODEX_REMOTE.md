@@ -58,9 +58,12 @@ and makes one noninteractive, read-only SMART-log request in an owned process
 group. The request receives TERM after five seconds and any surviving member of
 that exact group receives KILL one second later. Signal/exit cleanup also kills
 the owned group, reaps its leader, and removes its private temporary output. The
-supervisor detects a disappearing direct caller and targets the leader PID until
-`setsid` has actually established the future process group, closing both caller-
-interruption and pre-PGID races without signaling the caller's own group.
+supervisor binds ownership to the invoking shell's PID and Linux process start
+time. That identity remains stable through shell function subshells and command
+substitution, so a disappearing invoker is still detected. Cleanup targets the
+leader PID until `setsid` has established the future process group, closing
+caller-interruption, command-substitution, and pre-PGID races without signaling
+the caller's own group.
 The validated fixed-field projection is captured completely before the diagnostic
 labels SMART available. It prints only health counters: critical warnings, spare, wear,
 media/error-log counts, unsafe shutdowns, and time above warning/critical
