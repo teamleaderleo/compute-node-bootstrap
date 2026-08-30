@@ -855,5 +855,6 @@ printf 'local_control_socket=%s\n' "$local_control_socket"
 if [ "$remote_control_processes" = 1 ] && [ "$local_control_socket" = listening_owned ]; then
     printf 'local_remote_control_transport=ready\n'
 else
-    printf 'local_remote_control_transport=not_ready\n'
+    printf 'local_remote_control_transport=not_observed\n'
 fi
+printf 'remote_host_relay=unverified\n'
