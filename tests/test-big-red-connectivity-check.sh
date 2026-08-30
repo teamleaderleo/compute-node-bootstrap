@@ -6,9 +6,21 @@ diagnostic=$repository_root/scripts/big-red-connectivity-check
 test_root=$(mktemp -d /tmp/big-red-connectivity-test.XXXXXX)
 pid_file=$test_root/timeout-pids
 interrupt_pid_file=$test_root/interruption-pids
+race_pid_file=$test_root/race-probe-pids
+race_setsid_file=$test_root/race-setsid-pid
+interrupt_driver_pid=
+race_setsid_pid=
 
 cleanup() {
-    for owned_pid_file in "$pid_file" "$interrupt_pid_file"; do
+    if [ -n "$interrupt_driver_pid" ] &&
+        kill -0 "$interrupt_driver_pid" 2>/dev/null; then
+        kill -KILL "$interrupt_driver_pid" 2>/dev/null || true
+    fi
+    if [ -n "$race_setsid_pid" ] &&
+        kill -0 "$race_setsid_pid" 2>/dev/null; then
+        kill -KILL "$race_setsid_pid" 2>/dev/null || true
+    fi
+    for owned_pid_file in "$pid_file" "$interrupt_pid_file" "$race_pid_file"; do
         [ -r "$owned_pid_file" ] || continue
         while read -r owned_leader owned_child owned_pgid; do
             for owned_pid in "$owned_leader" "$owned_child"; do
@@ -95,23 +107,36 @@ fi
 interrupt_tmp=$test_root/interruption-tmp
 mkdir "$interrupt_tmp"
 # shellcheck disable=SC2016 # $1 belongs to the isolated child shell
-if timeout -k 4s 1s env \
+env \
     PATH="$timeout_bin:/usr/bin:/bin" \
     TMPDIR="$interrupt_tmp" \
     SMART_TEST_PID_FILE="$interrupt_pid_file" \
     BIG_RED_CONNECTIVITY_CHECK_FUNCTIONS_ONLY=1 \
-    sh -c '. "$1"; read_nvme_smart /dev/nvme0 >/dev/null' \
-    sh "$diagnostic" 2>"$test_root/interruption-stderr"; then
-    printf 'interrupted SMART probe unexpectedly completed\n' >&2
-    exit 1
-else
-    interrupt_status=$?
-fi
-[ "$interrupt_status" -eq 124 ] || {
-    printf 'interrupted SMART probe returned %s, expected 124\n' \
-        "$interrupt_status" >&2
+    sh -c '. "$1"; nvme_health_summary /dev/nvme0 >/dev/null' \
+    sh "$diagnostic" 2>"$test_root/interruption-stderr" &
+interrupt_driver_pid=$!
+attempts=0
+while [ ! -r "$interrupt_pid_file" ] && [ "$attempts" -lt 30 ]; do
+    sleep 0.1
+    attempts=$((attempts + 1))
+done
+[ -r "$interrupt_pid_file" ] || {
+    printf 'interrupted SMART probe never launched\n' >&2
     exit 1
 }
+/usr/bin/kill -TERM "$interrupt_driver_pid"
+attempts=0
+while kill -0 "$interrupt_driver_pid" 2>/dev/null &&
+    [ "$attempts" -lt 30 ]; do
+    sleep 0.1
+    attempts=$((attempts + 1))
+done
+if kill -0 "$interrupt_driver_pid" 2>/dev/null; then
+    printf 'PID-targeted caller did not exit\n' >&2
+    exit 1
+fi
+wait "$interrupt_driver_pid" 2>/dev/null || true
+interrupt_driver_pid=
 read -r interrupted_pid interrupted_child interrupted_pgid \
     <"$interrupt_pid_file"
 attempts=0
@@ -146,6 +171,95 @@ if find "$interrupt_tmp" -mindepth 1 -print -quit | grep -q .; then
     exit 1
 fi
 
+race_bin=$test_root/race-bin
+race_tmp=$test_root/race-tmp
+mkdir "$race_bin" "$race_tmp"
+cat >"$race_bin/nvme" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+cat >"$race_bin/setsid" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$$" >"$SMART_TEST_SETSID_PID_FILE"
+trap '' TERM
+sleep 2
+exec /usr/bin/setsid "$@"
+EOF
+cat >"$race_bin/sudo" <<'EOF'
+#!/bin/sh
+pgid=$(ps -o pgid= -p "$$" | tr -d ' ')
+(
+    trap '' TERM
+    while :; do
+        sleep 30
+    done
+) &
+child=$!
+printf '%s %s %s\n' "$$" "$child" "$pgid" >"$SMART_TEST_PID_FILE"
+trap 'exit 0' TERM
+wait "$child"
+EOF
+chmod 0755 "$race_bin/nvme" "$race_bin/setsid" "$race_bin/sudo"
+
+# shellcheck disable=SC2016 # $1 belongs to the isolated child shell
+env \
+    PATH="$race_bin:/usr/bin:/bin" \
+    TMPDIR="$race_tmp" \
+    SMART_TEST_PID_FILE="$race_pid_file" \
+    SMART_TEST_SETSID_PID_FILE="$race_setsid_file" \
+    BIG_RED_CONNECTIVITY_CHECK_FUNCTIONS_ONLY=1 \
+    sh -c '. "$1"; nvme_health_summary /dev/nvme0 >/dev/null' \
+    sh "$diagnostic" 2>"$test_root/race-stderr" &
+interrupt_driver_pid=$!
+attempts=0
+while [ ! -r "$race_setsid_file" ] && [ "$attempts" -lt 30 ]; do
+    sleep 0.1
+    attempts=$((attempts + 1))
+done
+[ -r "$race_setsid_file" ] || {
+    printf 'delayed setsid wrapper never launched\n' >&2
+    exit 1
+}
+read -r race_setsid_pid <"$race_setsid_file"
+/usr/bin/kill -TERM "$interrupt_driver_pid"
+attempts=0
+while kill -0 "$interrupt_driver_pid" 2>/dev/null &&
+    [ "$attempts" -lt 30 ]; do
+    sleep 0.1
+    attempts=$((attempts + 1))
+done
+if kill -0 "$interrupt_driver_pid" 2>/dev/null; then
+    printf 'pre-PGID caller did not exit\n' >&2
+    exit 1
+fi
+wait "$interrupt_driver_pid" 2>/dev/null || true
+interrupt_driver_pid=
+attempts=0
+while kill -0 "$race_setsid_pid" 2>/dev/null &&
+    [ "$attempts" -lt 30 ]; do
+    sleep 0.1
+    attempts=$((attempts + 1))
+done
+if kill -0 "$race_setsid_pid" 2>/dev/null; then
+    printf 'pre-PGID setsid wrapper survived: %s\n' "$race_setsid_pid" >&2
+    exit 1
+fi
+race_setsid_pid=
+if [ -e "$race_pid_file" ]; then
+    printf 'pre-PGID race launched the privileged probe\n' >&2
+    exit 1
+fi
+attempts=0
+while find "$race_tmp" -mindepth 1 -print -quit | grep -q . &&
+    [ "$attempts" -lt 30 ]; do
+    sleep 0.1
+    attempts=$((attempts + 1))
+done
+if find "$race_tmp" -mindepth 1 -print -quit | grep -q .; then
+    printf 'pre-PGID interruption left a temporary file\n' >&2
+    exit 1
+fi
+
 projection_bin=$test_root/projection-bin
 projection_count=$test_root/projection-count
 mkdir "$projection_bin"
@@ -174,16 +288,17 @@ export SMART_TEST_JQ_COUNT
 PATH=$projection_bin:/usr/bin:/bin
 export PATH
 trap_before=$(trap)
-read_nvme_smart /dev/nvme0 >"$test_root/direct-smart-output"
+nvme_health_summary /dev/nvme0 >"$test_root/direct-smart-output"
 trap_after=$(trap)
 [ "$trap_before" = "$trap_after" ] || {
     printf 'SMART probe replaced caller traps\n' >&2
     exit 1
 }
-grep -q '"critical_warning":0' "$test_root/direct-smart-output" || {
-    printf 'direct SMART probe lost its validated fixture output\n' >&2
+[ "$(cat "$test_root/direct-smart-output")" = 'nvme_smart=unavailable' ] || {
+    printf 'direct SMART projection failure was mislabeled\n' >&2
     exit 1
 }
+: >"$projection_count"
 projection_output=$(nvme_health_summary /dev/nvme0)
 PATH=$original_path
 export PATH

@@ -57,7 +57,10 @@ binds that controller to its own hwmon child for temperature/critical thresholds
 and makes one noninteractive, read-only SMART-log request in an owned process
 group. The request receives TERM after five seconds and any surviving member of
 that exact group receives KILL one second later. Signal/exit cleanup also kills
-the owned group, reaps its leader, and removes its private temporary output.
+the owned group, reaps its leader, and removes its private temporary output. The
+supervisor detects a disappearing direct caller and targets the leader PID until
+`setsid` has actually established the future process group, closing both caller-
+interruption and pre-PGID races without signaling the caller's own group.
 The validated fixed-field projection is captured completely before the diagnostic
 labels SMART available. It prints only health counters: critical warnings, spare, wear,
 media/error-log counts, unsafe shutdowns, and time above warning/critical
