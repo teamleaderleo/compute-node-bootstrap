@@ -60,6 +60,13 @@ export BIG_RED_CONNECTIVITY_CHECK_FUNCTIONS_ONLY
 . "$diagnostic"
 unset BIG_RED_CONNECTIVITY_CHECK_FUNCTIONS_ONLY
 
+grep -q 'router_oom_kills_observed_log=' "$diagnostic"
+grep -q 'router_latest_oom_age_seconds_observed_log=' "$diagnostic"
+if grep -q 'router_oom_kills_current_boot=' "$diagnostic"; then
+    printf 'Beryl OOM count still claims boot-complete retention\n' >&2
+    exit 1
+fi
+
 cat >"$test_root/meminfo" <<'EOF'
 MemTotal:       32768000 kB
 MemAvailable:   24576000 kB

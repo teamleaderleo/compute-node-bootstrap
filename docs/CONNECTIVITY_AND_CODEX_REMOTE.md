@@ -260,13 +260,16 @@ charge ceiling is active.
 
 In the optional Beryl section, the expected healthy shape is one `tailscaled`,
 one Mihomo `clash`, zero `netifyd`, and running Tailscale/OpenClash services.
-`router_oom_kills_current_boot` is cumulative until the router reboots; it does
-not imply that each invocation found a new OOM. `router_uptime_seconds` and
-`router_latest_oom_age_seconds` use the router's monotonic boot clock, so the
-latter can prove how long the current boot has survived since its most recent
-OOM without depending on wall-clock parsing. It is `not_observed` when the
-current boot has no matching OOM and `unknown` if the kernel-log timestamp
-cannot be parsed. Compare the count, age, and process identity across checks.
+`router_oom_kills_observed_log` counts matching entries in OpenWrt's currently
+retained `logread` window, not the whole boot. The ring buffer can discard an
+older entry while accepting a new one, so an unchanged count does not prove
+that no new OOM occurred. `router_uptime_seconds` and
+`router_latest_oom_age_seconds_observed_log` use the router's monotonic boot
+clock. The latter proves the age of the newest retained matching event without
+depending on wall-clock parsing. It is `not_observed` when the retained window
+has no matching OOM and `unknown` if the retained kernel-log timestamp cannot
+be parsed. Compare the latest-event age and process identity across checks;
+never describe the count as cumulative or boot-complete.
 The Beryl fan fields are raw read-only state. `router_pwm_fan_current_state`
 is the requested cooling-device value, not measured RPM; this firmware exposes
 no tachometer through the inspected interface. A zero
