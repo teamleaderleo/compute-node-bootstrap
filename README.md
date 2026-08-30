@@ -44,6 +44,11 @@ The first remote foothold uses Tailscale because it avoids router port forwardin
 
 The [`scripts/`](scripts/) directory is only for the remote operator after handoff.
 
+For a credential-free Big Red/Beryl/Remote health receipt, run
+`python3 scripts/big-red-remote-recover.py`. Use `--repair` only after reviewing
+its planned actions; the tool deliberately refuses to restart OpenClash or
+ChatGPT Desktop.
+
 ## After first boot
 
 - [In-person REDMI bootstrap and Codex takeover TODO](docs/REDMI_HANDOFF_TODO.md)

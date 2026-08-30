@@ -114,14 +114,39 @@ combination is expected until the coordinated login/reboot validation; do not
 start a second instance merely to make the service state say active.
 
 The launcher unit and the actual local Remote transport are separate evidence.
-On 2026-08-30 the launcher remained inactive for the reason above, while one
-user-owned `codex app-server --remote-control --listen unix://` process and its
-private local control socket were both live. The diagnostic reports those as
-`remote_control_processes=1`, `local_control_socket=listening_owned`, and
-`local_remote_control_transport=ready`. That proves the local process/listener
-shape only; it does not claim that a phone is paired or that the external relay
-is reachable. Keep the coordinated next-login service validation in the
-backlog, but do not treat an inactive launcher alone as a Remote outage.
+More importantly, ChatGPT Desktop and the standalone managed app-server are
+alternative Remote authorities, not redundant copies. Desktop sends
+`remoteControl/enable` to its own app-server. Running a second standalone
+`codex app-server --remote-control --listen unix://` beside Desktop caused
+`thread-store conflict: ... already has an active writer` errors and made
+mobile tasks fail to open even though the standalone socket looked healthy.
+
+On a graphical workstation, keep Desktop as the sole authority and persistently
+disable the standalone daemon's Remote mode:
+
+```bash
+~/.codex/packages/standalone/current/codex app-server daemon disable-remote-control
+~/.codex/packages/standalone/current/codex app-server daemon stop
+```
+
+The `pid-update-loop` helper may remain; it is not a Remote writer. On a truly
+headless host where Desktop is absent, the managed standalone daemon remains a
+valid authority. Never start it merely because a local socket-based health
+check says Remote is stale.
+
+The deterministic operator check is:
+
+```bash
+python3 scripts/big-red-remote-recover.py
+```
+
+Add `--mobile-stale` to record an externally observed phone failure and
+`--repair` only when the emitted plan is acceptable. The repair path can stop a
+conflicting standalone authority, restart Beryl Tailscale, or restart Big Red
+Tailscale through the independent Beryl-LAN route. It never restarts OpenClash
+or ChatGPT Desktop. A stale phone with only the healthy Desktop authority is
+reported as `desktop_remote_reenable_required` because toggling Desktop Remote
+or restarting Desktop can interrupt active tasks and needs an attended action.
 
 ## Root cause found on 2026-08-28
 
