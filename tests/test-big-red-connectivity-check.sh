@@ -62,6 +62,12 @@ unset BIG_RED_CONNECTIVITY_CHECK_FUNCTIONS_ONLY
 
 grep -q 'router_oom_kills_observed_log=' "$diagnostic"
 grep -q 'router_latest_oom_age_seconds_observed_log=' "$diagnostic"
+grep -q "local_remote_control_transport=not_observed" "$diagnostic"
+grep -q "remote_host_relay=unverified" "$diagnostic"
+if grep -q "local_remote_control_transport=not_ready" "$diagnostic"; then
+    printf 'local-only Remote evidence still claims host readiness\n' >&2
+    exit 1
+fi
 if grep -q 'router_oom_kills_current_boot=' "$diagnostic"; then
     printf 'Beryl OOM count still claims boot-complete retention\n' >&2
     exit 1

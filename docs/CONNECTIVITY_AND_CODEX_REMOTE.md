@@ -46,7 +46,8 @@ https://learn.chatgpt.com/docs/remote-connections
   a redacted Big Red-to-Beryl local-link point sample, and the
   ChatGPT launcher, desktop, Codex remote-control process, and private local
   control-listener state without printing process arguments, socket paths, or
-  full network addresses. When
+  full network addresses. The local process/listener fields do not inspect the
+  secure relay: `remote_host_relay=unverified` is deliberate. When
   the purpose-specific `ssh beryl7` key is available on the Beryl LAN, it also
   prints router service/process counts, RSS, available memory, current-boot OOM
   count, SoC temperature, factory fan-policy values, requested PWM-fan state,
@@ -135,6 +136,25 @@ private local control socket were both live. The diagnostic reports those as
 shape only; it does not claim that a phone is paired or that the external relay
 is reachable. Keep the coordinated next-login service validation in the
 backlog, but do not treat an inactive launcher alone as a Remote outage.
+
+On 2026-08-31 the standalone process and socket were absent while the desktop
+remained active. Starting the already-bootstrapped managed daemon created the
+expected private listener, but the relay rejected that new connection because
+the enrolled host was already online. The duplicate was stopped immediately;
+ChatGPT and all active chats remained running. This proves that absence of the
+standalone process is not sufficient evidence of a host outage when the desktop
+app may own the enrolled connection through a different process shape. The
+diagnostic therefore reports `local_remote_control_transport=not_observed`
+rather than `not_ready` when that exact standalone pair is absent, and always
+reports `remote_host_relay=unverified`. Do not start a second daemon merely to
+turn the local observation green.
+
+If the host is actually missing from the phone, check the desktop app's
+**Settings > Connections** state first. The supported product flow is app-owned
+setup and pairing; the official documentation currently lists macOS and Windows
+hosts, so the observed Linux behavior remains preview-only. Coordinate any
+desktop restart with active local roots rather than using it as a diagnostic
+probe.
 
 ## Root cause found on 2026-08-28
 
