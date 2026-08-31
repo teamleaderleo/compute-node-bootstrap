@@ -2,7 +2,7 @@
 
 This runbook installs the pinned Jujutsu binary needed by the Big Red agent-workflow experiments.
 
-Research owner: `teamleaderleo/leo-workspace#357`  
+Research owner: `teamleaderleo/leo-workspace#357`
 Product follow-up: `teamleaderleo/glaeda#969`
 
 The install itself changes no repository. Converting or colocating a real checkout is a separate measured experiment.
