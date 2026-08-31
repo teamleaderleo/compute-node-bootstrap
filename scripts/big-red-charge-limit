@@ -47,7 +47,10 @@ firmware_call() {
     printf 'big-red-charge-limit: firmware request write failed\n' >&2
     return 1
   fi
-  if ! firmware_response=$(<"${acpi_call_path}"); then
+  # acpi_call terminates its textual response with NUL bytes. Strip them in
+  # the producer so Bash command substitution never has to discard them and
+  # emit a warning on every status or set operation.
+  if ! firmware_response=$(LC_ALL=C tr -d '\000' <"${acpi_call_path}"); then
     printf 'big-red-charge-limit: firmware response read failed\n' >&2
     return 1
   fi
