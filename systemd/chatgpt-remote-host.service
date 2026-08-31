@@ -1,0 +1,18 @@
+[Unit]
+Description=ChatGPT desktop remote host
+Documentation=https://learn.chatgpt.com/docs/remote-connections
+Wants=network-online.target
+After=graphical-session.target network-online.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+UMask=0022
+ExecStartPre=/usr/bin/sleep 10
+ExecStart=/usr/bin/chatgpt
+Restart=on-failure
+RestartSec=15
+TimeoutStopSec=20
+
+[Install]
+WantedBy=graphical-session.target

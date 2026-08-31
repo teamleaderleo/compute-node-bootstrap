@@ -96,7 +96,23 @@ X-GNOME-Autostart-enabled=true
 NoDisplay=true
 EOF
 chown "${operator_user}:${operator_user}" "/home/${operator_user}/.config/autostart/big-red-session-settings.desktop"
+
+# The browser profile already owns authentication and is configured to restore
+# its last session. Autostart only opens that existing profile after the
+# attended auto-login; it does not create or copy credentials.
+install -o "${operator_user}" -g "${operator_user}" -m 0644 \
+  "${script_dir}/../machines/redmibook-pro-16-2025/microsoft-edge-session.desktop" \
+  "/home/${operator_user}/.config/autostart/microsoft-edge-session.desktop"
+
+install -d -m 0755 -o "${operator_user}" -g "${operator_user}" "/home/${operator_user}/.config/systemd/user"
+install -o "${operator_user}" -g "${operator_user}" -m 0644 \
+  "${script_dir}/../systemd/chatgpt-remote-host.service" \
+  "/home/${operator_user}/.config/systemd/user/chatgpt-remote-host.service"
 if [[ -S /run/user/1000/bus ]]; then
+  sudo -u "${operator_user}" env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
+    systemctl --user daemon-reload
+  sudo -u "${operator_user}" env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
+    systemctl --user enable chatgpt-remote-host.service
   sudo -u "${operator_user}" env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus /usr/local/sbin/big-red-session-settings
 fi
 
