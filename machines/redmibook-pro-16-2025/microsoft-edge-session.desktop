@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Microsoft Edge session recovery
+Comment=Reopen the existing Edge profile and its configured last session
+TryExec=/usr/bin/microsoft-edge
+Exec=/usr/bin/microsoft-edge --profile-directory=Default
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=12

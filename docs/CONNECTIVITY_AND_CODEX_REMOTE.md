@@ -35,6 +35,9 @@ https://learn.chatgpt.com/docs/remote-connections
 - `~/.config/systemd/user/chatgpt-remote-host.service` is enabled for the
   graphical session. It starts ChatGPT ten seconds after login and restarts it
   after a process failure.
+- `~/.config/autostart/microsoft-edge-session.desktop` opens the existing Edge
+  profile after automatic login; that profile owns its credentials and is set
+  to restore the last browser session.
 - `/etc/ssh/sshd_config.d/60-big-red-remote-reliability.conf` sends a
   server-side keepalive every 45 seconds and tolerates four missed replies.
 - `/usr/local/bin/big-red-connectivity-check`, sourced from

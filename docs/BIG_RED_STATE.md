@@ -70,6 +70,8 @@ not copy either private key between machines or replace one with the other.
 - Linux IPv4/IPv6 forwarding is enabled.
 - `big-red` advertises a Tailscale exit node and the route is approved.
 - Codex CLI 0.150.1 and the official preview Linux ChatGPT/Codex desktop app 26.825.31414 are installed.
+- ChatGPT and the existing Edge profile start after automatic graphical login; Edge restores its
+  last session. Authentication remains in each application's existing local profile.
 - Intel's non-free `iHD` VA-API media driver is installed. H.264 encode support was verified with `vainfo`, allowing GNOME Remote Desktop to use the GPU instead of software encoding.
 - The Ubuntu-native workstation set provides LibreOffice Writer/Calc/Impress, Showtime, Amberol,
   File Roller and Remmina plus system `ripgrep`, `sqlite3` and `hyperfine`. Office documents no
