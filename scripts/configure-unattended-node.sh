@@ -12,7 +12,14 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 printf '== Finish Ubuntu package updates ==\n'
 apt update
 DEBIAN_FRONTEND=noninteractive apt full-upgrade -y
-apt install -y unattended-upgrades curl ca-certificates ethtool networkd-dispatcher
+apt install -y \
+  unattended-upgrades \
+  curl \
+  ca-certificates \
+  ethtool \
+  networkd-dispatcher \
+  intel-media-va-driver-non-free \
+  vainfo
 
 systemctl enable --now apt-daily.timer apt-daily-upgrade.timer unattended-upgrades.service
 

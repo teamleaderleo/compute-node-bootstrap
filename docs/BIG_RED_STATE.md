@@ -70,12 +70,27 @@ not copy either private key between machines or replace one with the other.
 - Linux IPv4/IPv6 forwarding is enabled.
 - `big-red` advertises a Tailscale exit node and the route is approved.
 - Codex CLI 0.150.1 and the official preview Linux ChatGPT/Codex desktop app 26.825.31414 are installed.
+- Intel's non-free `iHD` VA-API media driver is installed. H.264 encode support was verified with `vainfo`, allowing GNOME Remote Desktop to use the GPU instead of software encoding.
 - The Ubuntu-native workstation set provides LibreOffice Writer/Calc/Impress, Showtime, Amberol,
   File Roller and Remmina plus system `ripgrep`, `sqlite3` and `hyperfine`. Office documents no
   longer resolve to ChatGPT; PDF/image defaults are Papers/Loupe. See
   [`BIG_RED_WORKSTATION.md`](BIG_RED_WORKSTATION.md) for the reproducible apply, verification and
   rollback boundary.
 - GNOME LocalSearch indexes the standard Desktop/Documents/Downloads/media folders, not all of `$HOME`. Repositories, build trees, and language caches use project-aware search (`rg`, editors) instead of desktop metadata extraction.
+
+## Graphical and phone access
+
+GNOME Remote Desktop is enabled for interactive control on TCP 3389. It is not publicly forwarded. Air Blue reaches it through a persistent local SSH tunnel:
+
+```text
+Windows App -> 127.0.0.1:13389 -> ssh big-red -> 127.0.0.1:3389
+```
+
+The tunnel is maintained by Air Blue's `com.teamleaderleo.big-red-rdp-tunnel` LaunchAgent. The saved Windows App device is **big-red (Tailscale tunnel)**. Its credential stays in Windows App on Air Blue and is not recorded in this repository.
+
+The path was verified from Air Blue on a phone hotspot while `big-red` remained on the Beryl LAN. Live video and mouse input worked. A fresh session after the media-driver installation logged successful VA-API initialization and accepted H.264 AVC444/AVC420 capabilities.
+
+Codex Remote can control Codex tasks running on `big-red`; it is separate from whole-desktop RDP. Pair it through Codex Desktop rather than treating it as a graphical recovery path.
 
 ## Quick checks
 
@@ -85,6 +100,8 @@ sudo systemctl --no-pager --full status ssh tailscaled
 tailscale status
 tailscale netcheck
 systemctl is-enabled sleep.target suspend.target hibernate.target hybrid-sleep.target
+vainfo --display drm --device /dev/dri/renderD128
+XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user status gnome-remote-desktop.service
 ```
 
 The expected results are `static`, `static`, `masked`, `masked`: suspend is available, while hibernate and hybrid sleep remain disabled.
