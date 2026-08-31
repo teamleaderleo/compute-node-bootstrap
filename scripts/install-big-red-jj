@@ -153,11 +153,11 @@ validate_archive_members() {
         return 1
         ;;
     esac
-  done < <(tar -tzf "$1")
+  done < <(as_operator tar -tzf "$1")
 }
 
 apply_install() {
-  local temporary archive extract candidate_count candidate
+  local temporary archive extract candidate_count candidate observed_archive_sha
   local -a candidates
 
   print_plan
@@ -175,9 +175,12 @@ apply_install() {
     return 1
   fi
 
-  as_operator install -d -m 0755 "$cache_root" "$launcher_dir" "$(dirname "$install_root")"
+  as_operator mkdir -p "$cache_root" "$launcher_dir" "$(dirname "$install_root")"
   temporary=$(as_operator mktemp -d "$cache_root/big-red-jj-install.XXXXXX")
-  trap 'as_operator rm -rf "$temporary"' RETURN
+  cleanup_temporary() {
+    as_operator rm -rf "$temporary"
+  }
+  trap cleanup_temporary EXIT
   archive="$temporary/$asset"
   extract="$temporary/extract"
 
@@ -187,12 +190,16 @@ apply_install() {
     --connect-timeout 15 --max-time 120 \
     --output "$archive" "$asset_url"
 
-  printf '%s  %s\n' "$archive_sha256" "$archive" | sha256sum -c - >/dev/null
+  observed_archive_sha=$(as_operator sha256sum "$archive" | awk '{print $1}')
+  [[ "$observed_archive_sha" == "$archive_sha256" ]] || {
+    printf 'error: jj release archive checksum mismatch\n' >&2
+    return 1
+  }
   validate_archive_members "$archive"
   as_operator install -d -m 0700 "$extract"
   as_operator tar -xzf "$archive" -C "$extract"
 
-  mapfile -t candidates < <(find "$extract" -type f -name jj -print)
+  mapfile -t candidates < <(as_operator find "$extract" -type f -name jj -print)
   candidate_count=${#candidates[@]}
   [[ "$candidate_count" -eq 1 ]] || {
     printf 'error: expected exactly one jj binary in release archive; found %s\n' \
@@ -206,6 +213,8 @@ apply_install() {
   as_operator ln -s "$managed_binary" "$launcher"
 
   verify
+  cleanup_temporary
+  trap - EXIT
 }
 
 remove_install() {
