@@ -16,7 +16,8 @@ grep -Fxq 'launcher_relative=.local/bin/jj' <<<"$plan"
 
 grep -Fq 'https://github.com/jj-vcs/jj/releases/download/v${version}/${asset}' "$script"
 grep -Fq "minimum_git_version=2.41.0" "$script"
-grep -Fq "sha256sum -c -" "$script"
+grep -Fq 'observed_archive_sha=$(as_operator sha256sum "$archive"' "$script"
+grep -Fq '[[ "$observed_archive_sha" == "$archive_sha256" ]]' "$script"
 grep -Fq "refusing to replace existing launcher" "$script"
 grep -Fq "refusing jj install root with unexpected contents" "$script"
 
