@@ -11,6 +11,7 @@ claude_delegate_model='claude-opus-5'
 claude_delegate_effort=high
 antigravity_delegate_model=gemini-3.7-flash-high
 antigravity_delegate_effort=high
+install_temporary=
 
 usage() {
   cat <<'USAGE'
@@ -86,7 +87,8 @@ print_plan() {
   printf 'claude_delegate_effort=%s\n' "$claude_delegate_effort"
   printf 'antigravity_installer=%s\n' "$antigravity_installer_url"
   printf 'antigravity_launcher_relative=.local/bin/agy\n'
-  printf 'antigravity_installer_flags=--skip-path --skip-aliases\n'
+  printf 'antigravity_installer_flags=--dir .local/bin\n'
+  printf 'antigravity_installer_home=isolated_temporary_home\n'
   printf 'antigravity_delegate_model=%s\n' "$antigravity_delegate_model"
   printf 'antigravity_delegate_effort=%s\n' "$antigravity_delegate_effort"
   printf 'peer_launcher_relative=.local/bin/big-red-agent-peer\n'
@@ -181,15 +183,23 @@ install_peer_launcher() {
   as_operator install -m 0755 "$peer_source" "$peer_launcher"
 }
 
+cleanup_install_temporary() {
+  if [[ -n "${install_temporary:-}" ]]; then
+    as_operator rm -rf "$install_temporary"
+    install_temporary=
+  fi
+}
+
 install_peers() {
-  local temporary claude_installer antigravity_installer
+  local claude_installer antigravity_installer antigravity_installer_home
   print_plan
   as_operator mkdir -p "$cache_root" "$local_bin"
-  temporary=$(as_operator mktemp -d "$cache_root/big-red-agent-peers-install.XXXXXX")
-  claude_installer="$temporary/claude-install.sh"
-  antigravity_installer="$temporary/antigravity-install.sh"
-  cleanup() { as_operator rm -rf "$temporary"; }
-  trap cleanup EXIT
+  install_temporary=$(as_operator mktemp -d "$cache_root/big-red-agent-peers-install.XXXXXX")
+  claude_installer="$install_temporary/claude-install.sh"
+  antigravity_installer="$install_temporary/antigravity-install.sh"
+  antigravity_installer_home="$install_temporary/antigravity-home"
+  as_operator mkdir -p "$antigravity_installer_home"
+  trap cleanup_install_temporary EXIT
 
   as_operator curl --fail --location --silent --show-error --proto '=https' --tlsv1.2 \
     --connect-timeout 15 --max-time 120 --output "$claude_installer" "$claude_installer_url"
@@ -200,10 +210,11 @@ install_peers() {
   printf 'antigravity_installer_sha256=%s\n' "$(as_operator sha256sum "$antigravity_installer" | awk '{print $1}')"
 
   as_operator bash "$claude_installer" stable
-  as_operator bash "$antigravity_installer" --skip-path --skip-aliases
+  as_operator env HOME="$antigravity_installer_home" \
+    bash "$antigravity_installer" --dir "$local_bin"
   install_peer_launcher
   verify
-  cleanup
+  cleanup_install_temporary
   trap - EXIT
 }
 
