@@ -20,7 +20,11 @@ review:
 
 work:
   Both providers may edit the current owner project. No provider is granted a
-  general shell by this wrapper; command/test execution remains with the caller.
+  shell tool by this wrapper; command/test execution remains with the caller.
+
+Provider configuration/auth state is purpose-specific to this peer harness.
+Ambient API keys, GitHub tokens, SSH agent state, and arbitrary caller variables
+are not inherited.
 USAGE
 }
 
@@ -48,33 +52,87 @@ claude="$local_bin/claude"
 antigravity="$local_bin/agy"
 projects_root="$home/Projects"
 cache_root="$home/.cache/big-red-agent-peer"
+state_root="$home/.local/state/big-red-agent-peer"
+claude_config="$state_root/claude"
+antigravity_home="$state_root/antigravity-home"
 
-peer_env=(
+common_env=(
   /usr/bin/env -i
-  "HOME=$home"
   "USER=$user"
   "LOGNAME=$user"
   "PATH=$local_bin:/usr/local/bin:/usr/bin:/bin"
-  "XDG_CONFIG_HOME=$home/.config"
-  "XDG_DATA_HOME=$home/.local/share"
-  "XDG_STATE_HOME=$home/.local/state"
-  "XDG_CACHE_HOME=$home/.cache"
   "LANG=${LANG:-C.UTF-8}"
   "LC_ALL=${LC_ALL:-C.UTF-8}"
   "SHELL=${SHELL:-/bin/bash}"
 )
 for optional_name in XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS TERM COLORTERM SSH_TTY SSH_CONNECTION; do
   if [[ -n ${!optional_name:-} ]]; then
-    peer_env+=("$optional_name=${!optional_name}")
+    common_env+=("$optional_name=${!optional_name}")
   fi
 done
 
-# Deliberately absent from peer_env: ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN,
-# CLAUDE_CODE_OAUTH_TOKEN, GEMINI_API_KEY, GOOGLE_API_KEY,
-# GOOGLE_APPLICATION_CREDENTIALS, GOOGLE_GEMINI_BASE_URL, OPENAI_API_KEY,
-# GITHUB_TOKEN, GH_TOKEN, SSH_AUTH_SOCK, AWS_* and arbitrary caller variables.
-# Subscription-backed provider sessions must come from each provider's own local
-# credential store/keyring instead of ambient process credentials.
+# Deliberately absent from provider environments: ANTHROPIC_API_KEY,
+# ANTHROPIC_AUTH_TOKEN, CLAUDE_CODE_OAUTH_TOKEN, GEMINI_API_KEY,
+# GOOGLE_API_KEY, GOOGLE_APPLICATION_CREDENTIALS, GOOGLE_GEMINI_BASE_URL,
+# OPENAI_API_KEY, GITHUB_TOKEN, GH_TOKEN, SSH_AUTH_SOCK, AWS_* and arbitrary
+# caller variables. Subscription-backed sessions come from each provider's
+# purpose-specific local login/keyring state instead of ambient credentials.
+
+prepare_provider_state() {
+  install -d -m 0700 "$state_root" "$claude_config" "$antigravity_home"
+  install -d -m 0700 \
+    "$antigravity_home/.config" \
+    "$antigravity_home/.local/share" \
+    "$antigravity_home/.local/state" \
+    "$antigravity_home/.cache"
+}
+
+claude_env() {
+  prepare_provider_state
+  printf '%s\0' \
+    "${common_env[@]}" \
+    "HOME=$home" \
+    "XDG_CONFIG_HOME=$home/.config" \
+    "XDG_DATA_HOME=$home/.local/share" \
+    "XDG_STATE_HOME=$home/.local/state" \
+    "XDG_CACHE_HOME=$home/.cache" \
+    "CLAUDE_CONFIG_DIR=$claude_config"
+}
+
+antigravity_env() {
+  prepare_provider_state
+  printf '%s\0' \
+    "${common_env[@]}" \
+    "HOME=$antigravity_home" \
+    "XDG_CONFIG_HOME=$antigravity_home/.config" \
+    "XDG_DATA_HOME=$antigravity_home/.local/share" \
+    "XDG_STATE_HOME=$antigravity_home/.local/state" \
+    "XDG_CACHE_HOME=$antigravity_home/.cache"
+}
+
+run_with_env() {
+  local provider_name=$1
+  shift
+  local -a environment
+  if [[ "$provider_name" == claude ]]; then
+    mapfile -d '' -t environment < <(claude_env)
+  else
+    mapfile -d '' -t environment < <(antigravity_env)
+  fi
+  "${environment[@]}" "$@"
+}
+
+exec_with_env() {
+  local provider_name=$1
+  shift
+  local -a environment
+  if [[ "$provider_name" == claude ]]; then
+    mapfile -d '' -t environment < <(claude_env)
+  else
+    mapfile -d '' -t environment < <(antigravity_env)
+  fi
+  exec "${environment[@]}" "$@"
+}
 
 require_provider() {
   local label=$1
@@ -185,7 +243,7 @@ run_claude() {
     )
   fi
   args+=(-p "$prompt")
-  "${peer_env[@]}" /usr/bin/timeout --foreground 30m "${args[@]}"
+  run_with_env claude /usr/bin/timeout --foreground 30m "${args[@]}"
 }
 
 run_antigravity() {
@@ -210,7 +268,7 @@ run_antigravity() {
   trap cleanup_antigravity RETURN
   (
     cd "$cwd"
-    "${peer_env[@]}" /usr/bin/timeout --foreground 25m \
+    run_with_env antigravity /usr/bin/timeout --foreground 25m \
       "$antigravity" \
       -p "$prompt" \
       --output-format json \
@@ -229,11 +287,11 @@ if [[ "$mode" == auth ]]; then
   case "$provider" in
     claude)
       require_provider Claude "$claude"
-      exec "${peer_env[@]}" "$claude" auth login
+      exec_with_env claude "$claude" auth login
       ;;
     antigravity)
       require_provider Antigravity "$antigravity"
-      exec "${peer_env[@]}" "$antigravity"
+      exec_with_env antigravity "$antigravity"
       ;;
   esac
 fi
