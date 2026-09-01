@@ -5,14 +5,16 @@ mode=apply
 operator_user=${SUDO_USER:-leo}
 claude_installer_url=https://claude.ai/install.sh
 antigravity_installer_url=https://antigravity.google/cli/install.sh
+script_root=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+peer_source="$script_root/big-red-agent-peer"
 
 usage() {
   cat <<'USAGE'
 Usage: install-big-red-agent-peers [--plan|--verify-only] [--operator-user USER]
 
-Install or verify the official user-scoped Claude Code stable channel and
-Antigravity CLI on Big Red. This script never authenticates either provider and
-never reads provider credential stores.
+Install or verify the official user-scoped Claude Code stable channel,
+Antigravity CLI, and the reviewed Big Red peer launcher. This script never
+authenticates either provider and never reads provider credential stores.
 USAGE
 }
 
@@ -47,10 +49,15 @@ operator_home=$(getent passwd "$operator_user" | cut -d: -f6 || true)
   printf 'error: operator user %s has no existing home directory\n' "$operator_user" >&2
   exit 1
 }
+[[ -f "$peer_source" && ! -L "$peer_source" ]] || {
+  printf 'error: peer launcher source is missing or invalid: %s\n' "$peer_source" >&2
+  exit 1
+}
 
 local_bin="$operator_home/.local/bin"
 claude="$local_bin/claude"
 antigravity="$local_bin/agy"
+peer_launcher="$local_bin/big-red-agent-peer"
 cache_root="$operator_home/.cache"
 
 as_operator() {
@@ -77,7 +84,7 @@ as_operator() {
 
 require_tools() {
   local tool
-  for tool in bash curl sha256sum mktemp getent readlink head awk grep; do
+  for tool in bash curl sha256sum mktemp getent readlink head awk grep install stat; do
     command -v "$tool" >/dev/null || {
       printf 'error: required host tool is missing: %s\n' "$tool" >&2
       return 1
@@ -94,11 +101,13 @@ print_plan() {
   printf 'antigravity_installer=%s\n' "$antigravity_installer_url"
   printf 'antigravity_launcher_relative=.local/bin/agy\n'
   printf 'antigravity_installer_flags=--skip-path --skip-aliases\n'
+  printf 'peer_launcher_relative=.local/bin/big-red-agent-peer\n'
+  printf 'peer_launcher_sha256=%s\n' "$(sha256sum "$peer_source" | awk '{print $1}')"
   printf 'provider_authentication=separate_interactive_step\n'
   printf 'credential_files_read=none\n'
 }
 
-verify_one() {
+verify_provider_launcher() {
   local label=$1
   local launcher=$2
   [[ -e "$launcher" || -L "$launcher" ]] || {
@@ -120,10 +129,30 @@ verify_one() {
   esac
 }
 
+verify_peer_launcher() {
+  [[ -f "$peer_launcher" && ! -L "$peer_launcher" && -x "$peer_launcher" ]] || {
+    printf 'error: managed peer launcher is missing or invalid\n' >&2
+    return 1
+  }
+  [[ -O "$peer_launcher" || $(stat -c '%U' "$peer_launcher") == "$operator_user" ]] || {
+    printf 'error: managed peer launcher is not owned by the operator\n' >&2
+    return 1
+  }
+  local installed_sha source_sha
+  installed_sha=$(sha256sum "$peer_launcher" | awk '{print $1}')
+  source_sha=$(sha256sum "$peer_source" | awk '{print $1}')
+  [[ "$installed_sha" == "$source_sha" ]] || {
+    printf 'error: managed peer launcher does not match the reviewed checkout\n' >&2
+    return 1
+  }
+  printf 'peer_launcher_sha256=%s\n' "$installed_sha"
+}
+
 verify() {
   require_tools
-  verify_one claude "$claude"
-  verify_one antigravity "$antigravity"
+  verify_provider_launcher claude "$claude"
+  verify_provider_launcher antigravity "$antigravity"
+  verify_peer_launcher
 
   local claude_version antigravity_version claude_help antigravity_help
   claude_version=$(as_operator "$claude" --version | head -c 500)
@@ -157,7 +186,17 @@ verify() {
   printf 'authentication_status=not_inspected\n'
 }
 
-install() {
+install_peer_launcher() {
+  if [[ -e "$peer_launcher" || -L "$peer_launcher" ]]; then
+    [[ -f "$peer_launcher" && ! -L "$peer_launcher" ]] || {
+      printf 'error: refusing to replace unexpected peer launcher object: %s\n' "$peer_launcher" >&2
+      return 1
+    }
+  fi
+  as_operator install -m 0755 "$peer_source" "$peer_launcher"
+}
+
+install_peers() {
   local temporary claude_installer antigravity_installer
   print_plan
   as_operator mkdir -p "$cache_root" "$local_bin"
@@ -188,6 +227,7 @@ install() {
   # Google documents these flags to avoid shell alias/PATH profile mutations.
   as_operator bash "$claude_installer" stable
   as_operator bash "$antigravity_installer" --skip-path --skip-aliases
+  install_peer_launcher
 
   verify
   cleanup
@@ -197,5 +237,5 @@ install() {
 case "$mode" in
   plan) print_plan ;;
   verify) verify ;;
-  apply) install ;;
+  apply) install_peers ;;
 esac
