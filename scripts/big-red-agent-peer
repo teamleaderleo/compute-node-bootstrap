@@ -47,6 +47,7 @@ esac
 
 home=${HOME:?HOME is required}
 user=${USER:-$(id -un)}
+uid=$(id -u)
 local_bin="$home/.local/bin"
 claude="$local_bin/claude"
 antigravity="$local_bin/agy"
@@ -65,7 +66,17 @@ common_env=(
   "LC_ALL=${LC_ALL:-C.UTF-8}"
   "SHELL=${SHELL:-/bin/bash}"
 )
-for optional_name in XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS TERM COLORTERM SSH_TTY SSH_CONNECTION; do
+
+# Use only Big Red's locally derived per-user runtime directory/keyring bus.
+# Never trust a caller-provided DBUS_SESSION_BUS_ADDRESS or XDG_RUNTIME_DIR.
+runtime_dir="/run/user/$uid"
+if [[ -d "$runtime_dir" && ! -L "$runtime_dir" && -O "$runtime_dir" ]]; then
+  common_env+=("XDG_RUNTIME_DIR=$runtime_dir")
+  if [[ -S "$runtime_dir/bus" ]]; then
+    common_env+=("DBUS_SESSION_BUS_ADDRESS=unix:path=$runtime_dir/bus")
+  fi
+fi
+for optional_name in TERM COLORTERM SSH_TTY SSH_CONNECTION; do
   if [[ -n ${!optional_name:-} ]]; then
     common_env+=("$optional_name=${!optional_name}")
   fi
