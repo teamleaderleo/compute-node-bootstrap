@@ -7,6 +7,10 @@ claude_installer_url=https://claude.ai/install.sh
 antigravity_installer_url=https://antigravity.google/cli/install.sh
 script_root=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 peer_source="$script_root/big-red-agent-peer"
+claude_delegate_model=claude-opus-5
+claude_delegate_effort=high
+antigravity_delegate_model=gemini-3.7-flash-high
+antigravity_delegate_effort=high
 
 usage() {
   cat <<'USAGE'
@@ -64,7 +68,7 @@ as_operator() {
 
 require_tools() {
   local tool
-  for tool in bash curl sha256sum mktemp getent readlink head awk grep install stat; do
+  for tool in bash curl sha256sum mktemp getent readlink head awk grep install stat python3; do
     command -v "$tool" >/dev/null || {
       printf 'error: required host tool is missing: %s\n' "$tool" >&2
       return 1
@@ -78,11 +82,16 @@ print_plan() {
   printf 'claude_channel=stable\n'
   printf 'claude_installer=%s\n' "$claude_installer_url"
   printf 'claude_launcher_relative=.local/bin/claude\n'
+  printf 'claude_delegate_model=%s\n' "$claude_delegate_model"
+  printf 'claude_delegate_effort=%s\n' "$claude_delegate_effort"
   printf 'antigravity_installer=%s\n' "$antigravity_installer_url"
   printf 'antigravity_launcher_relative=.local/bin/agy\n'
   printf 'antigravity_installer_flags=--skip-path --skip-aliases\n'
+  printf 'antigravity_delegate_model=%s\n' "$antigravity_delegate_model"
+  printf 'antigravity_delegate_effort=%s\n' "$antigravity_delegate_effort"
   printf 'peer_launcher_relative=.local/bin/big-red-agent-peer\n'
   printf 'peer_launcher_sha256=%s\n' "$(sha256sum "$peer_source" | awk '{print $1}')"
+  printf 'peer_usage_ledger_relative=.local/state/big-red-agent-peer/usage.jsonl\n'
   printf 'delegated_agent_mode=full_unattended\n'
   printf 'provider_authentication=separate_interactive_step\n'
   printf 'credential_files_read=none\n'
@@ -136,13 +145,13 @@ verify() {
   }
   claude_help=$(as_operator "$claude" --help)
   antigravity_help=$(as_operator "$antigravity" --help)
-  for flag in --dangerously-skip-permissions --effort --output-format; do
+  for flag in --dangerously-skip-permissions --model --effort --output-format; do
     grep -q -- "$flag" <<<"$claude_help" || {
       printf 'error: installed Claude Code lacks required %s support\n' "$flag" >&2
       return 1
     }
   done
-  for flag in --dangerously-skip-permissions --effort --output-format --print-timeout; do
+  for flag in --dangerously-skip-permissions --model --effort --output-format --print-timeout; do
     grep -q -- "$flag" <<<"$antigravity_help" || {
       printf 'error: installed Antigravity CLI lacks required %s support\n' "$flag" >&2
       return 1
@@ -152,9 +161,13 @@ verify() {
   printf 'claude_install=verified\n'
   printf 'claude_version=%s\n' "$claude_version"
   printf 'claude_full_delegate=available\n'
+  printf 'claude_delegate_model=%s\n' "$claude_delegate_model"
+  printf 'claude_delegate_effort=%s\n' "$claude_delegate_effort"
   printf 'antigravity_install=verified\n'
   printf 'antigravity_version=%s\n' "$antigravity_version"
   printf 'antigravity_full_delegate=available\n'
+  printf 'antigravity_delegate_model=%s\n' "$antigravity_delegate_model"
+  printf 'antigravity_delegate_effort=%s\n' "$antigravity_delegate_effort"
   printf 'authentication_status=not_inspected\n'
 }
 
