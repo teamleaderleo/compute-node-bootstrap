@@ -30,6 +30,8 @@ printf 'provider=claude\n'
 printf 'cwd=%s\n' "$PWD"
 printf 'home=%s\n' "$HOME"
 printf 'claude_config=%s\n' "${CLAUDE_CONFIG_DIR:-}"
+printf 'runtime_dir=%s\n' "${XDG_RUNTIME_DIR:-}"
+printf 'dbus=%s\n' "${DBUS_SESSION_BUS_ADDRESS:-}"
 printf 'argv='
 printf '<%s>' "$@"
 printf '\n'
@@ -47,6 +49,8 @@ done
 printf 'provider=antigravity\n'
 printf 'cwd=%s\n' "$PWD"
 printf 'home=%s\n' "$HOME"
+printf 'runtime_dir=%s\n' "${XDG_RUNTIME_DIR:-}"
+printf 'dbus=%s\n' "${DBUS_SESSION_BUS_ADDRESS:-}"
 printf 'argv='
 printf '<%s>' "$@"
 printf '\n'
@@ -61,6 +65,8 @@ export GITHUB_TOKEN='must-not-cross-peer-boundary'
 export ANTHROPIC_API_KEY='must-not-cross-peer-boundary'
 export GEMINI_API_KEY='must-not-cross-peer-boundary'
 export SSH_AUTH_SOCK='/tmp/must-not-cross-peer-boundary.sock'
+export XDG_RUNTIME_DIR='/tmp/must-not-cross-peer-boundary-runtime'
+export DBUS_SESSION_BUS_ADDRESS='unix:path=/tmp/must-not-cross-peer-boundary-bus'
 
 claude_review=$(cd "$project" && "$PEER" review claude -- 'review this change')
 grep -q '^provider=claude$' <<<"$claude_review"
@@ -70,6 +76,7 @@ grep -q '<--safe-mode>' <<<"$claude_review"
 grep -q '<--permission-mode><dontAsk>' <<<"$claude_review"
 grep -q '<--tools><Read,Glob,Grep>' <<<"$claude_review"
 ! grep -q 'secret_present=' <<<"$claude_review"
+! grep -q 'must-not-cross-peer-boundary' <<<"$claude_review"
 ! grep -q '<Bash>' <<<"$claude_review"
 ! grep -q '<Edit>' <<<"$claude_review"
 ! grep -q '<Write>' <<<"$claude_review"
@@ -79,6 +86,7 @@ grep -q '<--permission-mode><acceptEdits>' <<<"$claude_work"
 grep -q '<--tools><Read,Glob,Grep,Edit,Write>' <<<"$claude_work"
 ! grep -q '<Bash>' <<<"$claude_work"
 ! grep -q 'secret_present=' <<<"$claude_work"
+! grep -q 'must-not-cross-peer-boundary' <<<"$claude_work"
 
 antigravity_review=$(cd "$project" && "$PEER" review antigravity -- 'review the project')
 grep -q '^provider=antigravity$' <<<"$antigravity_review"
@@ -88,6 +96,7 @@ grep -q '<--sandbox>' <<<"$antigravity_review"
 grep -q '<--print-timeout><20m>' <<<"$antigravity_review"
 ! grep -q -- '--dangerously-skip-permissions' <<<"$antigravity_review"
 ! grep -q 'secret_present=' <<<"$antigravity_review"
+! grep -q 'must-not-cross-peer-boundary' <<<"$antigravity_review"
 review_cwd=$(sed -n 's/^cwd=//p' <<<"$antigravity_review")
 [[ "$review_cwd" != "$project" ]]
 [[ "$review_cwd" == "$home/.cache/big-red-agent-peer/review."* ]]
@@ -98,6 +107,7 @@ antigravity_work=$(cd "$project" && "$PEER" work antigravity -- 'edit the projec
 grep -q "^cwd=$project$" <<<"$antigravity_work"
 grep -q '<--sandbox>' <<<"$antigravity_work"
 ! grep -q 'secret_present=' <<<"$antigravity_work"
+! grep -q 'must-not-cross-peer-boundary' <<<"$antigravity_work"
 [[ -f "$project/peer-write.txt" ]]
 rm "$project/peer-write.txt"
 
