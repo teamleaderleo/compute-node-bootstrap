@@ -1,0 +1,184 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+mode=apply
+operator_user=${SUDO_USER:-leo}
+claude_installer_url=https://claude.ai/install.sh
+antigravity_installer_url=https://antigravity.google/cli/install.sh
+
+usage() {
+  cat <<'USAGE'
+Usage: install-big-red-agent-peers [--plan|--verify-only] [--operator-user USER]
+
+Install or verify the official user-scoped Claude Code stable channel and
+Antigravity CLI on Big Red. This script never authenticates either provider and
+never reads provider credential stores.
+USAGE
+}
+
+while (($#)); do
+  case "$1" in
+    --plan)
+      mode=plan
+      shift
+      ;;
+    --verify-only)
+      mode=verify
+      shift
+      ;;
+    --operator-user)
+      [[ $# -ge 2 ]] || { usage >&2; exit 2; }
+      operator_user=$2
+      shift 2
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+operator_home=$(getent passwd "$operator_user" | cut -d: -f6 || true)
+[[ -n "$operator_home" && -d "$operator_home" ]] || {
+  printf 'error: operator user %s has no existing home directory\n' "$operator_user" >&2
+  exit 1
+}
+
+local_bin="$operator_home/.local/bin"
+claude="$local_bin/claude"
+antigravity="$local_bin/agy"
+cache_root="$operator_home/.cache"
+
+as_operator() {
+  if [[ $(id -un) == "$operator_user" ]]; then
+    env \
+      HOME="$operator_home" \
+      USER="$operator_user" \
+      LOGNAME="$operator_user" \
+      PATH="$local_bin:/usr/local/bin:/usr/bin:/bin" \
+      "$@"
+  else
+    command -v sudo >/dev/null || {
+      printf 'error: sudo is required to act as operator user %s\n' "$operator_user" >&2
+      return 1
+    }
+    sudo -u "$operator_user" env \
+      HOME="$operator_home" \
+      USER="$operator_user" \
+      LOGNAME="$operator_user" \
+      PATH="$local_bin:/usr/local/bin:/usr/bin:/bin" \
+      "$@"
+  fi
+}
+
+require_tools() {
+  local tool
+  for tool in bash curl sha256sum mktemp getent readlink head awk; do
+    command -v "$tool" >/dev/null || {
+      printf 'error: required host tool is missing: %s\n' "$tool" >&2
+      return 1
+    }
+  done
+}
+
+print_plan() {
+  require_tools
+  printf 'operator_user=%s\n' "$operator_user"
+  printf 'claude_channel=stable\n'
+  printf 'claude_installer=%s\n' "$claude_installer_url"
+  printf 'claude_launcher_relative=.local/bin/claude\n'
+  printf 'antigravity_installer=%s\n' "$antigravity_installer_url"
+  printf 'antigravity_launcher_relative=.local/bin/agy\n'
+  printf 'antigravity_installer_flags=--skip-path --skip-aliases\n'
+  printf 'provider_authentication=separate_interactive_step\n'
+  printf 'credential_files_read=none\n'
+}
+
+verify_one() {
+  local label=$1
+  local launcher=$2
+  [[ -e "$launcher" || -L "$launcher" ]] || {
+    printf 'error: %s launcher is missing: %s\n' "$label" "$launcher" >&2
+    return 1
+  }
+  local resolved
+  resolved=$(readlink -f "$launcher")
+  [[ -n "$resolved" && -f "$resolved" && -x "$resolved" ]] || {
+    printf 'error: %s launcher does not resolve to an executable regular file\n' "$label" >&2
+    return 1
+  }
+  case "$resolved" in
+    "$operator_home"/*) ;;
+    *)
+      printf 'error: %s launcher escapes the operator home: %s\n' "$label" "$resolved" >&2
+      return 1
+      ;;
+  esac
+}
+
+verify() {
+  require_tools
+  verify_one claude "$claude"
+  verify_one antigravity "$antigravity"
+
+  local claude_version antigravity_version
+  claude_version=$(as_operator "$claude" --version | head -c 500)
+  antigravity_version=$(as_operator "$antigravity" --version | head -c 500)
+  [[ -n "$claude_version" && -n "$antigravity_version" ]] || {
+    printf 'error: one provider CLI returned an empty version\n' >&2
+    return 1
+  }
+
+  printf 'claude_install=verified\n'
+  printf 'claude_version=%s\n' "$claude_version"
+  printf 'antigravity_install=verified\n'
+  printf 'antigravity_version=%s\n' "$antigravity_version"
+  printf 'authentication_status=not_inspected\n'
+}
+
+install() {
+  local temporary claude_installer antigravity_installer
+  print_plan
+  as_operator mkdir -p "$cache_root" "$local_bin"
+  temporary=$(as_operator mktemp -d "$cache_root/big-red-agent-peers-install.XXXXXX")
+  claude_installer="$temporary/claude-install.sh"
+  antigravity_installer="$temporary/antigravity-install.sh"
+
+  cleanup() {
+    as_operator rm -rf "$temporary"
+  }
+  trap cleanup EXIT
+
+  as_operator curl \
+    --fail --location --silent --show-error \
+    --proto '=https' --tlsv1.2 \
+    --connect-timeout 15 --max-time 120 \
+    --output "$claude_installer" "$claude_installer_url"
+  as_operator curl \
+    --fail --location --silent --show-error \
+    --proto '=https' --tlsv1.2 \
+    --connect-timeout 15 --max-time 120 \
+    --output "$antigravity_installer" "$antigravity_installer_url"
+
+  printf 'claude_installer_sha256=%s\n' "$(as_operator sha256sum "$claude_installer" | awk '{print $1}')"
+  printf 'antigravity_installer_sha256=%s\n' "$(as_operator sha256sum "$antigravity_installer" | awk '{print $1}')"
+
+  # Anthropic documents the stable channel as the native installer argument.
+  # Google documents these flags to avoid shell alias/PATH profile mutations.
+  as_operator bash "$claude_installer" stable
+  as_operator bash "$antigravity_installer" --skip-path --skip-aliases
+
+  verify
+  cleanup
+  trap - EXIT
+}
+
+case "$mode" in
+  plan) print_plan ;;
+  verify) verify ;;
+  apply) install ;;
+esac
