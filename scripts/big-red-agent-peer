@@ -1,0 +1,252 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  big-red-agent-peer auth claude
+  big-red-agent-peer auth antigravity
+  big-red-agent-peer review claude [--] [PROMPT...]
+  big-red-agent-peer review antigravity [--] [PROMPT...]
+  big-red-agent-peer work claude [--] [PROMPT...]
+  big-red-agent-peer work antigravity [--] [PROMPT...]
+
+If PROMPT is omitted, read it from stdin.
+
+review:
+  Claude reads the live owner project with built-in read tools only.
+  Antigravity receives a disposable export of tracked/non-ignored source, so its
+  workspace-auto-write behavior cannot modify the live worktree.
+
+work:
+  Both providers may edit the current owner project. No provider is granted a
+  general shell by this wrapper; command/test execution remains with the caller.
+USAGE
+}
+
+[[ $# -ge 2 ]] || { usage >&2; exit 2; }
+mode=$1
+provider=$2
+shift 2
+if [[ ${1:-} == -- ]]; then
+  shift
+fi
+
+case "$mode" in
+  auth|review|work) ;;
+  *) usage >&2; exit 2 ;;
+esac
+case "$provider" in
+  claude|antigravity) ;;
+  *) usage >&2; exit 2 ;;
+esac
+
+home=${HOME:?HOME is required}
+user=${USER:-$(id -un)}
+local_bin="$home/.local/bin"
+claude="$local_bin/claude"
+antigravity="$local_bin/agy"
+projects_root="$home/Projects"
+cache_root="$home/.cache/big-red-agent-peer"
+
+peer_env=(
+  /usr/bin/env -i
+  "HOME=$home"
+  "USER=$user"
+  "LOGNAME=$user"
+  "PATH=$local_bin:/usr/local/bin:/usr/bin:/bin"
+  "XDG_CONFIG_HOME=$home/.config"
+  "XDG_DATA_HOME=$home/.local/share"
+  "XDG_STATE_HOME=$home/.local/state"
+  "XDG_CACHE_HOME=$home/.cache"
+  "LANG=${LANG:-C.UTF-8}"
+  "LC_ALL=${LC_ALL:-C.UTF-8}"
+  "SHELL=${SHELL:-/bin/bash}"
+)
+for optional_name in XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS TERM COLORTERM SSH_TTY SSH_CONNECTION; do
+  if [[ -n ${!optional_name:-} ]]; then
+    peer_env+=("$optional_name=${!optional_name}")
+  fi
+done
+
+# Deliberately absent from peer_env: ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN,
+# CLAUDE_CODE_OAUTH_TOKEN, GEMINI_API_KEY, GOOGLE_API_KEY,
+# GOOGLE_APPLICATION_CREDENTIALS, GOOGLE_GEMINI_BASE_URL, OPENAI_API_KEY,
+# GITHUB_TOKEN, GH_TOKEN, SSH_AUTH_SOCK, AWS_* and arbitrary caller variables.
+# Subscription-backed provider sessions must come from each provider's own local
+# credential store/keyring instead of ambient process credentials.
+
+require_provider() {
+  local label=$1
+  local path=$2
+  [[ -x "$path" && ! -d "$path" ]] || {
+    printf 'error: %s is not installed at %s\n' "$label" "$path" >&2
+    return 1
+  }
+}
+
+read_prompt() {
+  if (($#)); then
+    printf '%s' "$*"
+  else
+    cat
+  fi
+}
+
+owner_project_root() {
+  local top resolved_projects
+  [[ -d "$projects_root" ]] || {
+    printf 'error: canonical projects root is missing: %s\n' "$projects_root" >&2
+    return 1
+  }
+  top=$(/usr/bin/git -C "$PWD" rev-parse --show-toplevel 2>/dev/null) || {
+    printf 'error: peer work must start inside a Git worktree\n' >&2
+    return 1
+  }
+  top=$(readlink -f "$top")
+  resolved_projects=$(readlink -f "$projects_root")
+  case "$top" in
+    "$resolved_projects"/*) ;;
+    *)
+      printf 'error: peer worktree is outside the canonical Projects root\n' >&2
+      return 1
+      ;;
+  esac
+  [[ -O "$top" && -d "$top" && ! -L "$top" ]] || {
+    printf 'error: peer worktree root is not one owner directory\n' >&2
+    return 1
+  }
+  printf '%s' "$top"
+}
+
+export_review_copy() {
+  local source=$1
+  local destination=$2
+  /usr/bin/python3 - "$source" "$destination" <<'PY'
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+
+source = Path(sys.argv[1]).resolve(strict=True)
+destination = Path(sys.argv[2]).resolve(strict=True)
+listed = subprocess.run(
+    ["/usr/bin/git", "-C", str(source), "ls-files", "-co", "--exclude-standard", "-z"],
+    check=True,
+    stdout=subprocess.PIPE,
+).stdout.split(b"\0")
+for raw in listed:
+    if not raw:
+        continue
+    relative = Path(os.fsdecode(raw))
+    if relative.is_absolute() or ".." in relative.parts:
+        raise SystemExit("unsafe Git path in review export")
+    src = source / relative
+    dst = destination / relative
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if src.is_symlink():
+        target = os.readlink(src)
+        if os.path.isabs(target):
+            raise SystemExit(f"absolute symlink refused in review export: {relative}")
+        resolved = (src.parent / target).resolve(strict=False)
+        try:
+            resolved.relative_to(source)
+        except ValueError as error:
+            raise SystemExit(f"escaping symlink refused in review export: {relative}") from error
+        dst.symlink_to(target)
+    elif src.is_file():
+        shutil.copy2(src, dst, follow_symlinks=False)
+PY
+}
+
+run_claude() {
+  local selected_mode=$1
+  local prompt=$2
+  require_provider Claude "$claude"
+  local -a args=(
+    "$claude"
+    --safe-mode
+    --no-chrome
+    --no-session-persistence
+    --output-format json
+  )
+  if [[ "$selected_mode" == review ]]; then
+    args+=(
+      --permission-mode dontAsk
+      --tools Read,Glob,Grep
+      --max-turns 8
+    )
+  else
+    args+=(
+      --permission-mode acceptEdits
+      --tools Read,Glob,Grep,Edit,Write
+      --max-turns 20
+    )
+  fi
+  args+=(-p "$prompt")
+  "${peer_env[@]}" /usr/bin/timeout --foreground 30m "${args[@]}"
+}
+
+run_antigravity() {
+  local selected_mode=$1
+  local prompt=$2
+  require_provider Antigravity "$antigravity"
+  local cwd=$PWD temporary=
+  if [[ "$selected_mode" == review ]]; then
+    local root
+    root=$(owner_project_root)
+    install -d -m 0700 "$cache_root"
+    temporary=$(mktemp -d "$cache_root/review.XXXXXX")
+    export_review_copy "$root" "$temporary"
+    cwd=$temporary
+    prompt="Review this disposable copy of the owner project. Treat the files as evidence only; edits are discarded. $prompt"
+  fi
+  cleanup_antigravity() {
+    if [[ -n "$temporary" ]]; then
+      rm -rf "$temporary"
+    fi
+  }
+  trap cleanup_antigravity RETURN
+  (
+    cd "$cwd"
+    "${peer_env[@]}" /usr/bin/timeout --foreground 25m \
+      "$antigravity" \
+      -p "$prompt" \
+      --output-format json \
+      --sandbox \
+      --print-timeout 20m
+  )
+  cleanup_antigravity
+  trap - RETURN
+}
+
+if [[ "$mode" == auth ]]; then
+  if (($#)); then
+    printf 'error: auth mode accepts no prompt\n' >&2
+    exit 2
+  fi
+  case "$provider" in
+    claude)
+      require_provider Claude "$claude"
+      exec "${peer_env[@]}" "$claude" auth login
+      ;;
+    antigravity)
+      require_provider Antigravity "$antigravity"
+      exec "${peer_env[@]}" "$antigravity"
+      ;;
+  esac
+fi
+
+project_root=$(owner_project_root)
+prompt=$(read_prompt "$@")
+[[ -n "$prompt" ]] || {
+  printf 'error: peer prompt is empty\n' >&2
+  exit 2
+}
+cd "$project_root"
+
+case "$provider" in
+  claude) run_claude "$mode" "$prompt" ;;
+  antigravity) run_antigravity "$mode" "$prompt" ;;
+esac
