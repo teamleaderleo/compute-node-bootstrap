@@ -214,17 +214,34 @@ project_root() {
 # API-key/provider route inherited from the caller. Other ordinary user state is
 # retained: toolchains, GitHub/SSH credentials, provider settings, hooks,
 # plugins, skills, MCP servers, and project configuration.
+subscription_env=(
+  /usr/bin/env
+  -u ANTHROPIC_API_KEY
+  -u ANTHROPIC_AUTH_TOKEN
+  -u ANTHROPIC_BASE_URL
+  -u ANTHROPIC_BEDROCK_BASE_URL
+  -u ANTHROPIC_VERTEX_BASE_URL
+  -u CLAUDE_CODE_OAUTH_TOKEN
+  -u CLAUDE_CODE_USE_BEDROCK
+  -u CLAUDE_CODE_USE_FOUNDRY
+  -u CLAUDE_CODE_USE_MANTLE
+  -u CLAUDE_CODE_USE_VERTEX
+  -u GEMINI_API_KEY
+  -u GOOGLE_API_KEY
+  -u GOOGLE_APPLICATION_CREDENTIALS
+  -u GOOGLE_CLOUD_LOCATION
+  -u GOOGLE_CLOUD_PROJECT
+  -u GOOGLE_GENAI_USE_VERTEXAI
+  -u GOOGLE_GEMINI_BASE_URL
+  -u OPENAI_API_KEY
+)
+
 run_subscription_env() {
-  /usr/bin/env \
-    -u ANTHROPIC_API_KEY \
-    -u ANTHROPIC_AUTH_TOKEN \
-    -u CLAUDE_CODE_OAUTH_TOKEN \
-    -u GEMINI_API_KEY \
-    -u GOOGLE_API_KEY \
-    -u GOOGLE_APPLICATION_CREDENTIALS \
-    -u GOOGLE_GEMINI_BASE_URL \
-    -u OPENAI_API_KEY \
-    "$@"
+  "${subscription_env[@]}" "$@"
+}
+
+exec_subscription_env() {
+  exec "${subscription_env[@]}" "$@"
 }
 
 prefix_prompt() {
@@ -359,7 +376,8 @@ PY
 }
 
 private_output_root() {
-  local candidate="/run/user/$(id -u)"
+  local candidate
+  candidate="/run/user/$(id -u)"
   if [[ -d "$candidate" && ! -L "$candidate" && -O "$candidate" ]]; then
     printf '%s' "$candidate"
   else
@@ -430,8 +448,8 @@ if [[ "$mode" == auth ]]; then
     exit 2
   fi
   case "$provider" in
-    claude) require_provider Claude "$claude"; exec "$claude" auth login ;;
-    antigravity) require_provider Antigravity "$antigravity"; exec "$antigravity" ;;
+    claude) require_provider Claude "$claude"; exec_subscription_env "$claude" auth login ;;
+    antigravity) require_provider Antigravity "$antigravity"; exec_subscription_env "$antigravity" ;;
   esac
 fi
 

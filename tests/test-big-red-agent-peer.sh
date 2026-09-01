@@ -27,6 +27,8 @@ log=${BIG_RED_AGENT_TEST_LOG:?}.claude
   printf 'github_token=%s\n' "${GITHUB_TOKEN:-}"
   printf 'ssh_auth_sock=%s\n' "${SSH_AUTH_SOCK:-}"
   printf 'anthropic_api=%s\n' "${ANTHROPIC_API_KEY:-}"
+  printf 'anthropic_base_url=%s\n' "${ANTHROPIC_BASE_URL:-}"
+  printf 'claude_bedrock=%s\n' "${CLAUDE_CODE_USE_BEDROCK:-}"
   printf 'gemini_api=%s\n' "${GEMINI_API_KEY:-}"
   printf 'openai_api=%s\n' "${OPENAI_API_KEY:-}"
   printf 'argv='; printf '<%s>' "$@"; printf '\n'
@@ -46,6 +48,7 @@ log=${BIG_RED_AGENT_TEST_LOG:?}.antigravity
   printf 'ssh_auth_sock=%s\n' "${SSH_AUTH_SOCK:-}"
   printf 'anthropic_api=%s\n' "${ANTHROPIC_API_KEY:-}"
   printf 'google_api=%s\n' "${GOOGLE_API_KEY:-}"
+  printf 'google_genai_vertex=%s\n' "${GOOGLE_GENAI_USE_VERTEXAI:-}"
   printf 'gemini_api=%s\n' "${GEMINI_API_KEY:-}"
   printf 'openai_api=%s\n' "${OPENAI_API_KEY:-}"
   printf 'argv='; printf '<%s>' "$@"; printf '\n'
@@ -61,9 +64,34 @@ export BIG_RED_AGENT_TEST_LOG="$log_root"
 export GITHUB_TOKEN='github-available-to-full-peer'
 export SSH_AUTH_SOCK='/tmp/ssh-agent-available-to-full-peer.sock'
 export ANTHROPIC_API_KEY='must-be-unset-for-subscription-route'
+export ANTHROPIC_BASE_URL='https://api-proxy.example.invalid'
+export CLAUDE_CODE_USE_BEDROCK=1
 export GEMINI_API_KEY='must-be-unset-for-subscription-route'
 export GOOGLE_API_KEY='must-be-unset-for-subscription-route'
+export GOOGLE_GENAI_USE_VERTEXAI=true
 export OPENAI_API_KEY='must-be-unset-for-subscription-route'
+
+(
+  cd "$project"
+  "$PEER" auth claude >/dev/null
+)
+grep -q '<auth><login>' "$log_root.claude"
+grep -q '^anthropic_api=$' "$log_root.claude"
+grep -q '^anthropic_base_url=$' "$log_root.claude"
+grep -q '^claude_bedrock=$' "$log_root.claude"
+grep -q '^gemini_api=$' "$log_root.claude"
+grep -q '^openai_api=$' "$log_root.claude"
+
+(
+  cd "$project"
+  "$PEER" auth antigravity >/dev/null
+)
+grep -q '^anthropic_api=$' "$log_root.antigravity"
+grep -q '^google_api=$' "$log_root.antigravity"
+grep -q '^google_genai_vertex=$' "$log_root.antigravity"
+grep -q '^gemini_api=$' "$log_root.antigravity"
+grep -q '^openai_api=$' "$log_root.antigravity"
+rm "$project/peer-write.txt"
 
 claude_review=$(cd "$project" && "$PEER" review claude -- 'review this change')
 grep -q 'fake claude result' <<<"$claude_review"
@@ -72,6 +100,8 @@ grep -q "^home=$home$" "$log_root.claude"
 grep -q '^github_token=github-available-to-full-peer$' "$log_root.claude"
 grep -q '^ssh_auth_sock=/tmp/ssh-agent-available-to-full-peer.sock$' "$log_root.claude"
 grep -q '^anthropic_api=$' "$log_root.claude"
+grep -q '^anthropic_base_url=$' "$log_root.claude"
+grep -q '^claude_bedrock=$' "$log_root.claude"
 grep -q '^gemini_api=$' "$log_root.claude"
 grep -q '^openai_api=$' "$log_root.claude"
 grep -q '<--model><claude-opus-5>' "$log_root.claude"
@@ -79,9 +109,12 @@ grep -q '<--effort><high>' "$log_root.claude"
 grep -q '<--dangerously-skip-permissions>' "$log_root.claude"
 grep -q '<--output-format><json>' "$log_root.claude"
 grep -q 'Act as an independent senior reviewer' "$log_root.claude"
-! grep -q -- '--safe-mode' "$log_root.claude"
-! grep -q -- '--tools' "$log_root.claude"
-! grep -q -- '--permission-mode' "$log_root.claude"
+if grep -q -- '--safe-mode' "$log_root.claude" ||
+   grep -q -- '--tools' "$log_root.claude" ||
+   grep -q -- '--permission-mode' "$log_root.claude"; then
+  printf 'error: Claude invocation unexpectedly restricted peer capabilities\n' >&2
+  exit 1
+fi
 
 claude_work=$(cd "$project" && printf '%s' 'implement this task' | "$PEER" work claude)
 grep -q 'fake claude result' <<<"$claude_work"
@@ -95,6 +128,7 @@ grep -q '^github_token=github-available-to-full-peer$' "$log_root.antigravity"
 grep -q '^ssh_auth_sock=/tmp/ssh-agent-available-to-full-peer.sock$' "$log_root.antigravity"
 grep -q '^anthropic_api=$' "$log_root.antigravity"
 grep -q '^google_api=$' "$log_root.antigravity"
+grep -q '^google_genai_vertex=$' "$log_root.antigravity"
 grep -q '^gemini_api=$' "$log_root.antigravity"
 grep -q '^openai_api=$' "$log_root.antigravity"
 grep -q '<--model><gemini-3.7-flash-high>' "$log_root.antigravity"
@@ -102,7 +136,10 @@ grep -q '<--effort><high>' "$log_root.antigravity"
 grep -q '<--dangerously-skip-permissions>' "$log_root.antigravity"
 grep -q '<--output-format><json>' "$log_root.antigravity"
 grep -q '<--print-timeout><60m>' "$log_root.antigravity"
-! grep -q -- '--sandbox' "$log_root.antigravity"
+if grep -q -- '--sandbox' "$log_root.antigravity"; then
+  printf 'error: Antigravity invocation unexpectedly enabled a sandbox\n' >&2
+  exit 1
+fi
 [[ -f "$project/peer-write.txt" ]]
 rm "$project/peer-write.txt"
 
@@ -115,10 +152,10 @@ ledger="$home/.local/state/big-red-agent-peer/usage.jsonl"
 [[ -f "$ledger" ]]
 [[ $(stat -c '%a' "$ledger") == 600 ]]
 [[ $(wc -l < "$ledger") -eq 4 ]]
-! grep -q 'fake claude result' "$ledger"
-! grep -q 'fake antigravity result' "$ledger"
-! grep -q 'conversation_id' "$ledger"
-! grep -q 'review this change' "$ledger"
+if grep -qE 'fake claude result|fake antigravity result|conversation_id|review this change' "$ledger"; then
+  printf 'error: peer usage ledger leaked delegated content\n' >&2
+  exit 1
+fi
 
 summary=$($PEER usage 168)
 /usr/bin/python3 - "$summary" <<'PY'

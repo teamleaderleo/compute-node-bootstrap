@@ -7,7 +7,7 @@ claude_installer_url=https://claude.ai/install.sh
 antigravity_installer_url=https://antigravity.google/cli/install.sh
 script_root=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 peer_source="$script_root/big-red-agent-peer"
-claude_delegate_model=claude-opus-5
+claude_delegate_model='claude-opus-5'
 claude_delegate_effort=high
 antigravity_delegate_model=gemini-3.7-flash-high
 antigravity_delegate_effort=high
@@ -143,8 +143,8 @@ verify() {
     printf 'error: one provider CLI returned an empty version\n' >&2
     return 1
   }
-  claude_help=$(as_operator "$claude" --help)
-  antigravity_help=$(as_operator "$antigravity" --help)
+  claude_help=$(as_operator "$claude" --help 2>&1)
+  antigravity_help=$(as_operator "$antigravity" --help 2>&1)
   for flag in --dangerously-skip-permissions --model --effort --output-format; do
     grep -q -- "$flag" <<<"$claude_help" || {
       printf 'error: installed Claude Code lacks required %s support\n' "$flag" >&2
