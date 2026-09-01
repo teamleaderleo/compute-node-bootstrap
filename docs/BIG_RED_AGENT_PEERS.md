@@ -31,11 +31,16 @@ scripts/install-big-red-agent-peers
 scripts/install-big-red-agent-peers --verify-only
 ```
 
-The installer uses the official native installers:
+The installer uses the official native installers and installs the reviewed peer wrapper:
 
 - Claude Code, stable channel, expected launcher `~/.local/bin/claude`;
 - Antigravity CLI, expected launcher `~/.local/bin/agy`, with `--skip-path --skip-aliases` so its
-  installer does not rewrite the shell profile.
+  installer does not rewrite the shell profile;
+- `scripts/big-red-agent-peer` copied byte-for-byte to `~/.local/bin/big-red-agent-peer` mode 0755.
+
+Verification requires the installed peer launcher SHA-256 to match the reviewed checkout. It also
+checks that the installed Claude supports `--safe-mode` and Antigravity supports `--sandbox` and
+`--print-timeout`, so a provider release that no longer supports this boundary refuses verification.
 
 The installer downloads each upstream installer into an owner cache directory before executing it
 and reports that installer file's observed SHA-256 as receipt evidence. The upstream installers are
@@ -45,11 +50,11 @@ The install script never launches an account login and never reads a provider cr
 
 ## Authenticate each dedicated peer session
 
-Run these from the logged-in Big Red desktop or an SSH terminal:
+After installation, run these from the logged-in Big Red desktop or an SSH terminal:
 
 ```bash
-scripts/big-red-agent-peer auth claude
-scripts/big-red-agent-peer auth antigravity
+big-red-agent-peer auth claude
+big-red-agent-peer auth antigravity
 ```
 
 Claude Code uses `claude auth login`. Sign in with the Claude subscription account. On a remote
@@ -62,32 +67,35 @@ terminal.
 Do not add `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`, or provider tokens to shell
 profiles for this subscription-backed route. The peer wrapper starts providers from a clean
 environment and intentionally drops ambient API keys, GitHub tokens, SSH-agent access, cloud
-credentials, and arbitrary caller variables.
+credentials, caller-supplied DBus/runtime paths, and arbitrary caller variables.
 
-The wrapper also gives each provider purpose-specific state:
+The wrapper gives each provider purpose-specific state:
 
 - Claude: `~/.local/state/big-red-agent-peer/claude` through `CLAUDE_CONFIG_DIR`;
 - Antigravity: `~/.local/state/big-red-agent-peer/antigravity-home` as its dedicated HOME.
 
-OS keyring/DBus access is preserved so the providers can use their supported local login stores. Do
-not inspect, export, screenshot, or copy those credential values.
+For supported local provider credential storage, the wrapper derives only Big Red's own
+`/run/user/<uid>` runtime directory and `bus` socket. This lets an SSH-launched peer reach the current
+user keyring when that bus exists without trusting an inherited `DBUS_SESSION_BUS_ADDRESS`.
+
+Do not inspect, export, screenshot, or copy provider credential values.
 
 ## Invoke a peer
 
-Run the wrapper inside an owner Git worktree below `~/Projects`.
+Run `big-red-agent-peer` inside an owner Git worktree below `~/Projects`.
 
 Read/review only:
 
 ```bash
-scripts/big-red-agent-peer review claude -- 'Review this change for correctness and missed cases.'
-scripts/big-red-agent-peer review antigravity -- 'Review this change for correctness and missed cases.'
+big-red-agent-peer review claude -- 'Review this change for correctness and missed cases.'
+big-red-agent-peer review antigravity -- 'Review this change for correctness and missed cases.'
 ```
 
 Edit the current task worktree:
 
 ```bash
-scripts/big-red-agent-peer work claude -- 'Implement the requested fix. Do not run commands.'
-scripts/big-red-agent-peer work antigravity -- 'Implement the requested fix. Do not run commands.'
+big-red-agent-peer work claude -- 'Implement the requested fix. Do not run commands.'
+big-red-agent-peer work antigravity -- 'Implement the requested fix. Do not run commands.'
 ```
 
 Prompts may also arrive on stdin.
@@ -123,8 +131,8 @@ Use a tiny non-mutating prompt first:
 
 ```bash
 cd ~/Projects/glaeda
-scripts/big-red-agent-peer review claude -- 'Reply with the repository name and one sentence about what it does.'
-scripts/big-red-agent-peer review antigravity -- 'Reply with the repository name and one sentence about what it does.'
+big-red-agent-peer review claude -- 'Reply with the repository name and one sentence about what it does.'
+big-red-agent-peer review antigravity -- 'Reply with the repository name and one sentence about what it does.'
 ```
 
 Then use one task-private worktree for an edit-only smoke and inspect the Git diff yourself. Run
