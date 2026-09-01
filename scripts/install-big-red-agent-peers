@@ -77,7 +77,7 @@ as_operator() {
 
 require_tools() {
   local tool
-  for tool in bash curl sha256sum mktemp getent readlink head awk; do
+  for tool in bash curl sha256sum mktemp getent readlink head awk grep; do
     command -v "$tool" >/dev/null || {
       printf 'error: required host tool is missing: %s\n' "$tool" >&2
       return 1
@@ -125,7 +125,7 @@ verify() {
   verify_one claude "$claude"
   verify_one antigravity "$antigravity"
 
-  local claude_version antigravity_version
+  local claude_version antigravity_version claude_help antigravity_help
   claude_version=$(as_operator "$claude" --version | head -c 500)
   antigravity_version=$(as_operator "$antigravity" --version | head -c 500)
   [[ -n "$claude_version" && -n "$antigravity_version" ]] || {
@@ -133,10 +133,27 @@ verify() {
     return 1
   }
 
+  claude_help=$(as_operator "$claude" --help)
+  antigravity_help=$(as_operator "$antigravity" --help)
+  grep -q -- '--safe-mode' <<<"$claude_help" || {
+    printf 'error: installed Claude Code lacks required --safe-mode support\n' >&2
+    return 1
+  }
+  grep -q -- '--sandbox' <<<"$antigravity_help" || {
+    printf 'error: installed Antigravity CLI lacks required --sandbox support\n' >&2
+    return 1
+  }
+  grep -q -- '--print-timeout' <<<"$antigravity_help" || {
+    printf 'error: installed Antigravity CLI lacks required --print-timeout support\n' >&2
+    return 1
+  }
+
   printf 'claude_install=verified\n'
   printf 'claude_version=%s\n' "$claude_version"
+  printf 'claude_safe_mode=available\n'
   printf 'antigravity_install=verified\n'
   printf 'antigravity_version=%s\n' "$antigravity_version"
+  printf 'antigravity_sandbox=available\n'
   printf 'authentication_status=not_inspected\n'
 }
 
