@@ -12,17 +12,110 @@ Usage:
   big-red-agent-peer work antigravity [--] [PROMPT...]
   big-red-agent-peer run claude [--] [PROMPT...]
   big-red-agent-peer run antigravity [--] [PROMPT...]
+  big-red-agent-peer usage [HOURS]
 
 If PROMPT is omitted, read it from stdin.
 
 review/work/run all launch the provider as a full local coding agent. The mode
-changes only the instruction prefix; it does not remove tools, sandbox commands,
-or disable normal provider/project configuration.
+changes only the instruction prefix; it does not remove tools or disable normal
+provider/project configuration.
 
-Codex/Pi can therefore delegate substantial implementation, tests, research,
-and review work to either subscription-backed peer.
+usage reads only the content-free local delegated-run ledger. HOURS defaults to
+168 (seven days).
 USAGE
 }
+
+home=${HOME:?HOME is required}
+local_bin="$home/.local/bin"
+claude="$local_bin/claude"
+antigravity="$local_bin/agy"
+run_timeout=${BIG_RED_AGENT_TIMEOUT:-90m}
+claude_model=${BIG_RED_CLAUDE_MODEL:-claude-opus-5}
+claude_effort=${BIG_RED_CLAUDE_EFFORT:-high}
+antigravity_model=${BIG_RED_ANTIGRAVITY_MODEL:-gemini-3.7-flash-high}
+antigravity_effort=${BIG_RED_ANTIGRAVITY_EFFORT:-high}
+usage_root="$home/.local/state/big-red-agent-peer"
+usage_ledger="$usage_root/usage.jsonl"
+
+show_usage() {
+  local hours=${1:-168}
+  [[ "$hours" =~ ^[1-9][0-9]*$ ]] || {
+    printf 'error: usage window must be a positive integer number of hours\n' >&2
+    return 2
+  }
+  /usr/bin/python3 - "$usage_ledger" "$hours" <<'PY'
+from __future__ import annotations
+
+import datetime as dt
+import json
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+hours = int(sys.argv[2])
+now = dt.datetime.now(dt.timezone.utc)
+cutoff = now - dt.timedelta(hours=hours)
+rows: list[dict[str, object]] = []
+if path.exists():
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        if not raw:
+            continue
+        try:
+            value = json.loads(raw)
+            settled = dt.datetime.fromisoformat(str(value["settled_at"]).replace("Z", "+00:00"))
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if settled >= cutoff:
+            rows.append(value)
+
+def integer(value: object) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+
+summary: dict[tuple[str, str, str], dict[str, object]] = {}
+for row in rows:
+    key = (str(row.get("provider", "unknown")), str(row.get("model", "unknown")), str(row.get("effort", "unknown")))
+    item = summary.setdefault(key, {
+        "provider": key[0],
+        "model": key[1],
+        "effort": key[2],
+        "runs": 0,
+        "successful_runs": 0,
+        "input_tokens": 0,
+        "cached_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "output_tokens": 0,
+        "reasoning_tokens": 0,
+        "total_tokens": 0,
+        "api_equivalent_estimate_usd": 0.0,
+        "api_equivalent_estimate_runs": 0,
+    })
+    item["runs"] = int(item["runs"]) + 1
+    if row.get("exit_code") == 0:
+        item["successful_runs"] = int(item["successful_runs"]) + 1
+    for field in ("input_tokens", "cached_input_tokens", "cache_creation_input_tokens", "output_tokens", "reasoning_tokens", "total_tokens"):
+        item[field] = int(item[field]) + integer(row.get(field))
+    estimate = row.get("api_equivalent_estimate_usd")
+    if isinstance(estimate, (int, float)) and not isinstance(estimate, bool) and estimate >= 0:
+        item["api_equivalent_estimate_usd"] = round(float(item["api_equivalent_estimate_usd"]) + float(estimate), 8)
+        item["api_equivalent_estimate_runs"] = int(item["api_equivalent_estimate_runs"]) + 1
+
+output = {
+    "schema": "big-red-agent-peer-usage-summary/v1",
+    "window_hours": hours,
+    "run_count": len(rows),
+    "billing_class": "subscription",
+    "actual_marginal_cost_usd": None,
+    "by_provider_model": [summary[key] for key in sorted(summary)],
+}
+print(json.dumps(output, sort_keys=True, separators=(",", ":")))
+PY
+}
+
+if [[ ${1:-} == usage ]]; then
+  [[ $# -le 2 ]] || { usage >&2; exit 2; }
+  show_usage "${2:-168}"
+  exit $?
+fi
 
 [[ $# -ge 2 ]] || { usage >&2; exit 2; }
 mode=$1
@@ -31,7 +124,6 @@ shift 2
 if [[ ${1:-} == -- ]]; then
   shift
 fi
-
 case "$mode" in
   auth|review|work|run) ;;
   *) usage >&2; exit 2 ;;
@@ -40,14 +132,6 @@ case "$provider" in
   claude|antigravity) ;;
   *) usage >&2; exit 2 ;;
 esac
-
-home=${HOME:?HOME is required}
-local_bin="$home/.local/bin"
-claude="$local_bin/claude"
-antigravity="$local_bin/agy"
-run_timeout=${BIG_RED_AGENT_TIMEOUT:-90m}
-claude_effort=${BIG_RED_CLAUDE_EFFORT:-max}
-antigravity_effort=${BIG_RED_ANTIGRAVITY_EFFORT:-high}
 
 require_provider() {
   local label=$1
@@ -80,11 +164,10 @@ project_root() {
   printf '%s' "$top"
 }
 
-# Force the subscription-backed login route instead of silently switching to an
-# API-key billing path inherited from the calling process. Everything else in
-# the normal user environment remains available: PATH/toolchains, GitHub/SSH
-# credentials, provider settings, hooks, plugins, skills, MCP servers, and the
-# provider's ordinary local configuration.
+# Force subscription-backed model authentication rather than silently using an
+# API-key/provider route inherited from the caller. Other ordinary user state is
+# retained: toolchains, GitHub/SSH credentials, provider settings, hooks,
+# plugins, skills, MCP servers, and project configuration.
 run_subscription_env() {
   /usr/bin/env \
     -u ANTHROPIC_API_KEY \
@@ -108,43 +191,161 @@ prefix_prompt() {
     work)
       printf '%s' "Take ownership of this delegated coding task. Use the full local agent toolset, including commands, tests, configured web/MCP/plugins/skills, and file edits. Drive it to a concrete result and report what you changed and verified. $prompt"
       ;;
-    run)
-      printf '%s' "$prompt"
-      ;;
+    run) printf '%s' "$prompt" ;;
   esac
 }
 
-run_claude() {
-  local prompt=$1
-  require_provider Claude "$claude"
-  local -a args=(
-    "$claude"
-    --dangerously-skip-permissions
-    --effort "$claude_effort"
-    --output-format json
-  )
-  if [[ -n ${BIG_RED_CLAUDE_MODEL:-} ]]; then
-    args+=(--model "$BIG_RED_CLAUDE_MODEL")
+record_usage() {
+  local provider_name=$1 model=$2 effort=$3 selected_mode=$4 exit_code=$5 started_at=$6 settled_at=$7 wall_ms=$8 output_file=$9
+  install -d -m 0700 "$usage_root"
+  /usr/bin/python3 - "$usage_ledger" "$provider_name" "$model" "$effort" "$selected_mode" "$exit_code" "$started_at" "$settled_at" "$wall_ms" "$output_file" <<'PY'
+from __future__ import annotations
+
+import fcntl
+import json
+import math
+import os
+from pathlib import Path
+import sys
+
+ledger = Path(sys.argv[1])
+provider, model, effort, mode = sys.argv[2:6]
+exit_code = int(sys.argv[6])
+started_at, settled_at = sys.argv[7:9]
+wall_ms = int(sys.argv[9])
+output_path = Path(sys.argv[10])
+raw = output_path.read_bytes()
+value: dict[str, object] = {}
+try:
+    decoded = json.loads(raw)
+    if isinstance(decoded, dict):
+        value = decoded
+except (UnicodeDecodeError, json.JSONDecodeError):
+    pass
+usage = value.get("usage") if isinstance(value.get("usage"), dict) else {}
+
+def integer(name: str) -> int | None:
+    candidate = usage.get(name) if isinstance(usage, dict) else None
+    if isinstance(candidate, int) and not isinstance(candidate, bool) and candidate >= 0:
+        return candidate
+    return None
+
+def number(value: object) -> float | None:
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(float(value)) and float(value) >= 0:
+        return float(value)
+    return None
+
+if provider == "claude":
+    direct = integer("input_tokens")
+    cache_create = integer("cache_creation_input_tokens")
+    cache_read = integer("cache_read_input_tokens")
+    parts = [item for item in (direct, cache_create, cache_read) if item is not None]
+    input_tokens = sum(parts) if parts else None
+    output_tokens = integer("output_tokens")
+    total_tokens = (input_tokens + output_tokens) if input_tokens is not None and output_tokens is not None else None
+    reasoning_tokens = None
+    provider_status = value.get("subtype") if isinstance(value.get("subtype"), str) else None
+    api_estimate = number(value.get("total_cost_usd"))
+else:
+    input_tokens = integer("input_tokens")
+    cache_read = integer("cache_read_tokens")
+    cache_create = None
+    output_tokens = integer("output_tokens")
+    reasoning_tokens = integer("thinking_tokens")
+    total_tokens = integer("total_tokens")
+    provider_status = value.get("status") if isinstance(value.get("status"), str) else None
+    api_estimate = None
+
+receipt = {
+    "schema": "big-red-agent-peer-usage/v1",
+    "provider": provider,
+    "model": model,
+    "effort": effort,
+    "mode": mode,
+    "billing_class": "subscription",
+    "actual_marginal_cost_usd": None,
+    "api_equivalent_estimate_usd": api_estimate,
+    "started_at": started_at,
+    "settled_at": settled_at,
+    "wall_duration_ms": wall_ms,
+    "exit_code": exit_code,
+    "provider_status": provider_status,
+    "usage_observed": bool(usage),
+    "input_tokens": input_tokens,
+    "cached_input_tokens": cache_read,
+    "cache_creation_input_tokens": cache_create,
+    "output_tokens": output_tokens,
+    "reasoning_tokens": reasoning_tokens,
+    "total_tokens": total_tokens,
+    "result_bytes": len(raw),
+}
+line = json.dumps(receipt, sort_keys=True, separators=(",", ":")) + "\n"
+flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_CLOEXEC | os.O_NOFOLLOW
+fd = os.open(ledger, flags, 0o600)
+try:
+    metadata = os.fstat(fd)
+    if metadata.st_uid != os.getuid() or metadata.st_nlink != 1 or (metadata.st_mode & 0o777) != 0o600:
+        raise SystemExit("peer usage ledger is not one private owner file")
+    with os.fdopen(fd, "a", encoding="utf-8", closefd=False) as stream:
+        fcntl.flock(stream, fcntl.LOCK_EX)
+        stream.write(line)
+        stream.flush()
+        os.fsync(stream.fileno())
+        fcntl.flock(stream, fcntl.LOCK_UN)
+finally:
+    os.close(fd)
+PY
+}
+
+run_accounted() {
+  local provider_name=$1 model=$2 effort=$3 selected_mode=$4
+  shift 4
+  install -d -m 0700 "$usage_root"
+  local output_file started_at settled_at start_ms end_ms wall_ms status
+  output_file=$(mktemp "$usage_root/output.XXXXXX")
+  chmod 0600 "$output_file"
+  started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  start_ms=$(date +%s%3N)
+  set +e
+  run_subscription_env "$@" >"$output_file"
+  status=$?
+  set -e
+  end_ms=$(date +%s%3N)
+  settled_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  wall_ms=$((end_ms - start_ms))
+  cat "$output_file"
+  if ! record_usage "$provider_name" "$model" "$effort" "$selected_mode" "$status" "$started_at" "$settled_at" "$wall_ms" "$output_file"; then
+    printf 'warning: delegated peer usage receipt could not be recorded\n' >&2
   fi
-  args+=(-p "$prompt")
-  run_subscription_env /usr/bin/timeout --foreground "$run_timeout" "${args[@]}"
+  rm -f "$output_file"
+  return "$status"
+}
+
+run_claude() {
+  local selected_mode=$1 prompt=$2
+  require_provider Claude "$claude"
+  run_accounted claude "$claude_model" "$claude_effort" "$selected_mode" \
+    /usr/bin/timeout --foreground "$run_timeout" \
+    "$claude" \
+      --model "$claude_model" \
+      --effort "$claude_effort" \
+      --dangerously-skip-permissions \
+      --output-format json \
+      -p "$prompt"
 }
 
 run_antigravity() {
-  local prompt=$1
+  local selected_mode=$1 prompt=$2
   require_provider Antigravity "$antigravity"
-  local -a args=(
-    "$antigravity"
-    -p "$prompt"
-    --output-format json
-    --dangerously-skip-permissions
-    --effort "$antigravity_effort"
-    --print-timeout 60m
-  )
-  if [[ -n ${BIG_RED_ANTIGRAVITY_MODEL:-} ]]; then
-    args+=(--model "$BIG_RED_ANTIGRAVITY_MODEL")
-  fi
-  run_subscription_env /usr/bin/timeout --foreground "$run_timeout" "${args[@]}"
+  run_accounted antigravity "$antigravity_model" "$antigravity_effort" "$selected_mode" \
+    /usr/bin/timeout --foreground "$run_timeout" \
+    "$antigravity" \
+      -p "$prompt" \
+      --model "$antigravity_model" \
+      --effort "$antigravity_effort" \
+      --dangerously-skip-permissions \
+      --output-format json \
+      --print-timeout 60m
 }
 
 if [[ "$mode" == auth ]]; then
@@ -153,14 +354,8 @@ if [[ "$mode" == auth ]]; then
     exit 2
   fi
   case "$provider" in
-    claude)
-      require_provider Claude "$claude"
-      exec "$claude" auth login
-      ;;
-    antigravity)
-      require_provider Antigravity "$antigravity"
-      exec "$antigravity"
-      ;;
+    claude) require_provider Claude "$claude"; exec "$claude" auth login ;;
+    antigravity) require_provider Antigravity "$antigravity"; exec "$antigravity" ;;
   esac
 fi
 
@@ -172,8 +367,7 @@ prompt=$(read_prompt "$@")
 }
 prompt=$(prefix_prompt "$mode" "$prompt")
 cd "$root"
-
 case "$provider" in
-  claude) run_claude "$prompt" ;;
-  antigravity) run_antigravity "$prompt" ;;
+  claude) run_claude "$mode" "$prompt" ;;
+  antigravity) run_antigravity "$mode" "$prompt" ;;
 esac
