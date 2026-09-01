@@ -41,7 +41,7 @@ scripts/install-big-red-agent-peers --verify-only
 The installer uses the official native installers:
 
 - Claude Code stable channel, expected launcher `~/.local/bin/claude`;
-- Antigravity CLI, expected launcher `~/.local/bin/agy`, with `--skip-path --skip-aliases` so its installer does not rewrite shell profiles;
+- Antigravity CLI, expected launcher `~/.local/bin/agy`, installed with an explicit `--dir ~/.local/bin` while the upstream installer's setup handoff runs under a disposable HOME so it cannot rewrite the operator's shell profiles;
 - reviewed peer wrapper copied byte-for-byte to `~/.local/bin/big-red-agent-peer`.
 
 The installer downloads each upstream installer to an owner cache first and reports its observed SHA-256. The upstream installer endpoints are mutable, so those digests are observations rather than repository pins.
