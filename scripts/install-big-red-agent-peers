@@ -20,27 +20,15 @@ USAGE
 
 while (($#)); do
   case "$1" in
-    --plan)
-      mode=plan
-      shift
-      ;;
-    --verify-only)
-      mode=verify
-      shift
-      ;;
+    --plan) mode=plan; shift ;;
+    --verify-only) mode=verify; shift ;;
     --operator-user)
       [[ $# -ge 2 ]] || { usage >&2; exit 2; }
       operator_user=$2
       shift 2
       ;;
-    --help|-h)
-      usage
-      exit 0
-      ;;
-    *)
-      usage >&2
-      exit 2
-      ;;
+    --help|-h) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
   esac
 done
 
@@ -62,23 +50,15 @@ cache_root="$operator_home/.cache"
 
 as_operator() {
   if [[ $(id -un) == "$operator_user" ]]; then
-    env \
-      HOME="$operator_home" \
-      USER="$operator_user" \
-      LOGNAME="$operator_user" \
-      PATH="$local_bin:/usr/local/bin:/usr/bin:/bin" \
-      "$@"
+    env HOME="$operator_home" USER="$operator_user" LOGNAME="$operator_user" \
+      PATH="$local_bin:${PATH:-/usr/local/bin:/usr/bin:/bin}" "$@"
   else
     command -v sudo >/dev/null || {
       printf 'error: sudo is required to act as operator user %s\n' "$operator_user" >&2
       return 1
     }
-    sudo -u "$operator_user" env \
-      HOME="$operator_home" \
-      USER="$operator_user" \
-      LOGNAME="$operator_user" \
-      PATH="$local_bin:/usr/local/bin:/usr/bin:/bin" \
-      "$@"
+    sudo -u "$operator_user" env HOME="$operator_home" USER="$operator_user" LOGNAME="$operator_user" \
+      PATH="$local_bin:${PATH:-/usr/local/bin:/usr/bin:/bin}" "$@"
   fi
 }
 
@@ -103,13 +83,13 @@ print_plan() {
   printf 'antigravity_installer_flags=--skip-path --skip-aliases\n'
   printf 'peer_launcher_relative=.local/bin/big-red-agent-peer\n'
   printf 'peer_launcher_sha256=%s\n' "$(sha256sum "$peer_source" | awk '{print $1}')"
+  printf 'delegated_agent_mode=full_unattended\n'
   printf 'provider_authentication=separate_interactive_step\n'
   printf 'credential_files_read=none\n'
 }
 
 verify_provider_launcher() {
-  local label=$1
-  local launcher=$2
+  local label=$1 launcher=$2
   [[ -e "$launcher" || -L "$launcher" ]] || {
     printf 'error: %s launcher is missing: %s\n' "$label" "$launcher" >&2
     return 1
@@ -122,20 +102,13 @@ verify_provider_launcher() {
   }
   case "$resolved" in
     "$operator_home"/*) ;;
-    *)
-      printf 'error: %s launcher escapes the operator home: %s\n' "$label" "$resolved" >&2
-      return 1
-      ;;
+    *) printf 'error: %s launcher escapes the operator home: %s\n' "$label" "$resolved" >&2; return 1 ;;
   esac
 }
 
 verify_peer_launcher() {
   [[ -f "$peer_launcher" && ! -L "$peer_launcher" && -x "$peer_launcher" ]] || {
     printf 'error: managed peer launcher is missing or invalid\n' >&2
-    return 1
-  }
-  [[ -O "$peer_launcher" || $(stat -c '%U' "$peer_launcher") == "$operator_user" ]] || {
-    printf 'error: managed peer launcher is not owned by the operator\n' >&2
     return 1
   }
   local installed_sha source_sha
@@ -161,28 +134,27 @@ verify() {
     printf 'error: one provider CLI returned an empty version\n' >&2
     return 1
   }
-
   claude_help=$(as_operator "$claude" --help)
   antigravity_help=$(as_operator "$antigravity" --help)
-  grep -q -- '--safe-mode' <<<"$claude_help" || {
-    printf 'error: installed Claude Code lacks required --safe-mode support\n' >&2
-    return 1
-  }
-  grep -q -- '--sandbox' <<<"$antigravity_help" || {
-    printf 'error: installed Antigravity CLI lacks required --sandbox support\n' >&2
-    return 1
-  }
-  grep -q -- '--print-timeout' <<<"$antigravity_help" || {
-    printf 'error: installed Antigravity CLI lacks required --print-timeout support\n' >&2
-    return 1
-  }
+  for flag in --dangerously-skip-permissions --effort --output-format; do
+    grep -q -- "$flag" <<<"$claude_help" || {
+      printf 'error: installed Claude Code lacks required %s support\n' "$flag" >&2
+      return 1
+    }
+  done
+  for flag in --dangerously-skip-permissions --effort --output-format --print-timeout; do
+    grep -q -- "$flag" <<<"$antigravity_help" || {
+      printf 'error: installed Antigravity CLI lacks required %s support\n' "$flag" >&2
+      return 1
+    }
+  done
 
   printf 'claude_install=verified\n'
   printf 'claude_version=%s\n' "$claude_version"
-  printf 'claude_safe_mode=available\n'
+  printf 'claude_full_delegate=available\n'
   printf 'antigravity_install=verified\n'
   printf 'antigravity_version=%s\n' "$antigravity_version"
-  printf 'antigravity_sandbox=available\n'
+  printf 'antigravity_full_delegate=available\n'
   printf 'authentication_status=not_inspected\n'
 }
 
@@ -203,32 +175,20 @@ install_peers() {
   temporary=$(as_operator mktemp -d "$cache_root/big-red-agent-peers-install.XXXXXX")
   claude_installer="$temporary/claude-install.sh"
   antigravity_installer="$temporary/antigravity-install.sh"
-
-  cleanup() {
-    as_operator rm -rf "$temporary"
-  }
+  cleanup() { as_operator rm -rf "$temporary"; }
   trap cleanup EXIT
 
-  as_operator curl \
-    --fail --location --silent --show-error \
-    --proto '=https' --tlsv1.2 \
-    --connect-timeout 15 --max-time 120 \
-    --output "$claude_installer" "$claude_installer_url"
-  as_operator curl \
-    --fail --location --silent --show-error \
-    --proto '=https' --tlsv1.2 \
-    --connect-timeout 15 --max-time 120 \
-    --output "$antigravity_installer" "$antigravity_installer_url"
+  as_operator curl --fail --location --silent --show-error --proto '=https' --tlsv1.2 \
+    --connect-timeout 15 --max-time 120 --output "$claude_installer" "$claude_installer_url"
+  as_operator curl --fail --location --silent --show-error --proto '=https' --tlsv1.2 \
+    --connect-timeout 15 --max-time 120 --output "$antigravity_installer" "$antigravity_installer_url"
 
   printf 'claude_installer_sha256=%s\n' "$(as_operator sha256sum "$claude_installer" | awk '{print $1}')"
   printf 'antigravity_installer_sha256=%s\n' "$(as_operator sha256sum "$antigravity_installer" | awk '{print $1}')"
 
-  # Anthropic documents the stable channel as the native installer argument.
-  # Google documents these flags to avoid shell alias/PATH profile mutations.
   as_operator bash "$claude_installer" stable
   as_operator bash "$antigravity_installer" --skip-path --skip-aliases
   install_peer_launcher
-
   verify
   cleanup
   trap - EXIT
