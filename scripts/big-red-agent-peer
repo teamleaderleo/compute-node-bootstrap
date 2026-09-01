@@ -250,7 +250,7 @@ run_antigravity() {
   local selected_mode=$1
   local prompt=$2
   require_provider Antigravity "$antigravity"
-  local cwd=$PWD temporary=
+  local cwd=$PWD temporary= status=0
   if [[ "$selected_mode" == review ]]; then
     local root
     root=$(owner_project_root)
@@ -260,13 +260,8 @@ run_antigravity() {
     cwd=$temporary
     prompt="Review this disposable copy of the owner project. Treat the files as evidence only; edits are discarded. $prompt"
   fi
-  cleanup_antigravity() {
-    if [[ -n "$temporary" ]]; then
-      rm -rf "$temporary"
-    fi
-  }
-  trap cleanup_antigravity RETURN
-  (
+
+  if (
     cd "$cwd"
     run_with_env antigravity /usr/bin/timeout --foreground 25m \
       "$antigravity" \
@@ -274,9 +269,15 @@ run_antigravity() {
       --output-format json \
       --sandbox \
       --print-timeout 20m
-  )
-  cleanup_antigravity
-  trap - RETURN
+  ); then
+    status=0
+  else
+    status=$?
+  fi
+  if [[ -n "$temporary" ]]; then
+    rm -rf "$temporary"
+  fi
+  return "$status"
 }
 
 if [[ "$mode" == auth ]]; then
