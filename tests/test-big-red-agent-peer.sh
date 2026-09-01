@@ -29,6 +29,7 @@ log=${BIG_RED_AGENT_TEST_LOG:?}.claude
   printf 'anthropic_api=%s\n' "${ANTHROPIC_API_KEY:-}"
   printf 'anthropic_base_url=%s\n' "${ANTHROPIC_BASE_URL:-}"
   printf 'claude_bedrock=%s\n' "${CLAUDE_CODE_USE_BEDROCK:-}"
+  printf 'claude_anthropic_aws=%s\n' "${CLAUDE_CODE_USE_ANTHROPIC_AWS:-}"
   printf 'gemini_api=%s\n' "${GEMINI_API_KEY:-}"
   printf 'openai_api=%s\n' "${OPENAI_API_KEY:-}"
   printf 'argv='; printf '<%s>' "$@"; printf '\n'
@@ -49,6 +50,7 @@ log=${BIG_RED_AGENT_TEST_LOG:?}.antigravity
   printf 'anthropic_api=%s\n' "${ANTHROPIC_API_KEY:-}"
   printf 'google_api=%s\n' "${GOOGLE_API_KEY:-}"
   printf 'google_genai_vertex=%s\n' "${GOOGLE_GENAI_USE_VERTEXAI:-}"
+  printf 'agy_adc_auth=%s\n' "${AGY_ADC_AUTH:-}"
   printf 'gemini_api=%s\n' "${GEMINI_API_KEY:-}"
   printf 'openai_api=%s\n' "${OPENAI_API_KEY:-}"
   printf 'argv='; printf '<%s>' "$@"; printf '\n'
@@ -66,9 +68,11 @@ export SSH_AUTH_SOCK='/tmp/ssh-agent-available-to-full-peer.sock'
 export ANTHROPIC_API_KEY='must-be-unset-for-subscription-route'
 export ANTHROPIC_BASE_URL='https://api-proxy.example.invalid'
 export CLAUDE_CODE_USE_BEDROCK=1
+export CLAUDE_CODE_USE_ANTHROPIC_AWS=1
 export GEMINI_API_KEY='must-be-unset-for-subscription-route'
 export GOOGLE_API_KEY='must-be-unset-for-subscription-route'
 export GOOGLE_GENAI_USE_VERTEXAI=true
+export AGY_ADC_AUTH=true
 export OPENAI_API_KEY='must-be-unset-for-subscription-route'
 
 (
@@ -79,6 +83,7 @@ grep -q '<auth><login>' "$log_root.claude"
 grep -q '^anthropic_api=$' "$log_root.claude"
 grep -q '^anthropic_base_url=$' "$log_root.claude"
 grep -q '^claude_bedrock=$' "$log_root.claude"
+grep -q '^claude_anthropic_aws=$' "$log_root.claude"
 grep -q '^gemini_api=$' "$log_root.claude"
 grep -q '^openai_api=$' "$log_root.claude"
 
@@ -89,6 +94,7 @@ grep -q '^openai_api=$' "$log_root.claude"
 grep -q '^anthropic_api=$' "$log_root.antigravity"
 grep -q '^google_api=$' "$log_root.antigravity"
 grep -q '^google_genai_vertex=$' "$log_root.antigravity"
+grep -q '^agy_adc_auth=$' "$log_root.antigravity"
 grep -q '^gemini_api=$' "$log_root.antigravity"
 grep -q '^openai_api=$' "$log_root.antigravity"
 rm "$project/peer-write.txt"
@@ -102,6 +108,7 @@ grep -q '^ssh_auth_sock=/tmp/ssh-agent-available-to-full-peer.sock$' "$log_root.
 grep -q '^anthropic_api=$' "$log_root.claude"
 grep -q '^anthropic_base_url=$' "$log_root.claude"
 grep -q '^claude_bedrock=$' "$log_root.claude"
+grep -q '^claude_anthropic_aws=$' "$log_root.claude"
 grep -q '^gemini_api=$' "$log_root.claude"
 grep -q '^openai_api=$' "$log_root.claude"
 grep -q '<--model><claude-opus-5>' "$log_root.claude"
@@ -129,6 +136,7 @@ grep -q '^ssh_auth_sock=/tmp/ssh-agent-available-to-full-peer.sock$' "$log_root.
 grep -q '^anthropic_api=$' "$log_root.antigravity"
 grep -q '^google_api=$' "$log_root.antigravity"
 grep -q '^google_genai_vertex=$' "$log_root.antigravity"
+grep -q '^agy_adc_auth=$' "$log_root.antigravity"
 grep -q '^gemini_api=$' "$log_root.antigravity"
 grep -q '^openai_api=$' "$log_root.antigravity"
 grep -q '<--model><gemini-3.7-flash-high>' "$log_root.antigravity"
