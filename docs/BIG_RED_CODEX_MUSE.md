@@ -12,15 +12,14 @@ command-backed custom-provider authentication.
 - Base URL: `https://opencode.ai/zen/v1`
 - Wire API: `responses`
 - Model: `muse-spark-1.3-contributor-free`
-- Profiles: `muse-high`, `muse-xhigh`, and `muse-max`
+- Profiles: `muse-high` and `muse-xhigh`
 - Credential owner: the local OpenCode credential store
 - Existing Codex base config/default: unchanged
 
-The current Zen Responses endpoint accepts reasoning effort through `xhigh`.
-It rejects literal `max` with an `invalid_request_error`. The `muse-max` profile
-is nevertheless installed with the requested literal value so the limitation is
-visible and the profile will begin working if Zen adds `max`; it never silently
-downgrades to `xhigh`. Until then, `muse-xhigh` is the highest working profile.
+The current Zen Responses endpoint accepts reasoning effort through `xhigh`,
+which is the highest configured profile. The installer removes the earlier
+managed `muse-max` profile if present; it never aliases or silently downgrades an
+unsupported effort name.
 
 The reviewed token helper reads the existing OpenCode `opencode` API credential
 only when Codex requests a bearer token. No credential value is copied into a
@@ -53,7 +52,6 @@ Interactive:
 ```bash
 codex -p muse-high
 codex -p muse-xhigh
-codex -p muse-max # currently fails visibly until Zen accepts max
 ```
 
 Non-interactive:

@@ -46,7 +46,8 @@ operator_home=$(getent passwd "$operator_user" | cut -d: -f6 || true)
 codex_home="$operator_home/.codex"
 local_libexec="$operator_home/.local/libexec"
 token_helper="$local_libexec/opencode-zen-codex-token"
-profiles=(muse-high muse-xhigh muse-max)
+profiles=(muse-high muse-xhigh)
+obsolete_profile="$codex_home/muse-max.config.toml"
 
 as_operator() {
   if [[ $(id -un) == "$operator_user" ]]; then
@@ -64,7 +65,7 @@ as_operator() {
 
 require_tools() {
   local tool
-  for tool in bash getent install jq python3 sha256sum stat sed mktemp; do
+  for tool in bash getent install jq python3 sha256sum stat sed mktemp rm; do
     command -v "$tool" >/dev/null || {
       printf 'error: required host tool is missing: %s\n' "$tool" >&2
       return 1
@@ -96,8 +97,9 @@ print_plan() {
   printf 'provider_base_url=%s\n' "$base_url"
   printf 'wire_api=responses\n'
   printf 'model=%s\n' "$model"
-  printf 'profiles=muse-high,muse-xhigh,muse-max\n'
-  printf 'profile_efforts=high,xhigh,max\n'
+  printf 'profiles=muse-high,muse-xhigh\n'
+  printf 'profile_efforts=high,xhigh\n'
+  printf 'obsolete_profile_removed=muse-max\n'
   printf 'token_helper_relative=.local/libexec/opencode-zen-codex-token\n'
   printf 'token_helper_sha256=%s\n' "$(sha256sum "$token_source" | awk '{print $1}')"
   printf 'authentication=command_backed_existing_opencode_credential\n'
@@ -116,12 +118,27 @@ cleanup_install_temporary() {
   fi
 }
 
+remove_obsolete_profile() {
+  if [[ -e "$obsolete_profile" || -L "$obsolete_profile" ]]; then
+    [[ -f "$obsolete_profile" && ! -L "$obsolete_profile" ]] || {
+      printf 'error: refusing to remove unexpected obsolete profile object: %s\n' "$obsolete_profile" >&2
+      return 1
+    }
+    grep -q '^# Managed by install-big-red-codex-muse\.$' "$obsolete_profile" || {
+      printf 'error: refusing to remove unmanaged obsolete profile: %s\n' "$obsolete_profile" >&2
+      return 1
+    }
+    as_operator rm -f -- "$obsolete_profile"
+  fi
+}
+
 install_profiles() {
   require_tools
   print_plan
   local profile source destination
   as_operator mkdir -p "$codex_home" "$local_libexec"
   as_operator install -m 0755 "$token_source" "$token_helper"
+  remove_obsolete_profile
   install_temporary=$(mktemp -d)
   trap cleanup_install_temporary EXIT
   for profile in "${profiles[@]}"; do
@@ -210,7 +227,10 @@ verify() {
   }
   verify_profile muse-high high
   verify_profile muse-xhigh xhigh
-  verify_profile muse-max max
+  [[ ! -e "$obsolete_profile" && ! -L "$obsolete_profile" ]] || {
+    printf 'error: obsolete muse-max profile remains installed\n' >&2
+    return 1
+  }
   for profile in "${profiles[@]}"; do
     as_operator "$codex" --strict-config -p "$profile" --version >/dev/null
   done
@@ -222,8 +242,8 @@ verify() {
   printf 'provider_base_url=%s\n' "$base_url"
   printf 'wire_api=responses\n'
   printf 'model=%s\n' "$model"
-  printf 'profiles=muse-high,muse-xhigh,muse-max\n'
-  printf 'profile_efforts=high,xhigh,max\n'
+  printf 'profiles=muse-high,muse-xhigh\n'
+  printf 'profile_efforts=high,xhigh\n'
   printf 'zen_auth=verified\n'
 }
 

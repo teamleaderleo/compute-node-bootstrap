@@ -51,6 +51,10 @@ cat > "$home/.codex/config.toml" <<'TOML'
 model = "gpt-5.6-sol"
 model_reasoning_effort = "high"
 TOML
+cat > "$home/.codex/muse-max.config.toml" <<'TOML'
+# Managed by install-big-red-codex-muse.
+model = "obsolete"
+TOML
 base_before=$(sha256sum "$home/.codex/config.toml" | awk '{print $1}')
 
 export PATH="$fakebin:$PATH"
@@ -60,8 +64,9 @@ grep -q '^provider=opencode_zen$' <<<"$plan"
 grep -q '^provider_base_url=https://opencode.ai/zen/v1$' <<<"$plan"
 grep -q '^wire_api=responses$' <<<"$plan"
 grep -q '^model=muse-spark-1.3-contributor-free$' <<<"$plan"
-grep -q '^profiles=muse-high,muse-xhigh,muse-max$' <<<"$plan"
-grep -q '^profile_efforts=high,xhigh,max$' <<<"$plan"
+grep -q '^profiles=muse-high,muse-xhigh$' <<<"$plan"
+grep -q '^profile_efforts=high,xhigh$' <<<"$plan"
+grep -q '^obsolete_profile_removed=muse-max$' <<<"$plan"
 grep -q '^authentication=command_backed_existing_opencode_credential$' <<<"$plan"
 grep -q '^credential_value_copied=no$' <<<"$plan"
 
@@ -70,8 +75,9 @@ grep -q '^codex_install=verified$' "$temporary/apply.out"
 grep -q '^zen_auth=verified$' "$temporary/apply.out"
 [[ -x "$home/.local/libexec/opencode-zen-codex-token" ]]
 [[ $($home/.local/libexec/opencode-zen-codex-token) == test-only-zen-key ]]
+[[ ! -e "$home/.codex/muse-max.config.toml" ]]
 
-for pair in muse-high:high muse-xhigh:xhigh muse-max:max; do
+for pair in muse-high:high muse-xhigh:xhigh; do
   profile=${pair%%:*}
   effort=${pair##*:}
   path="$home/.codex/$profile.config.toml"
