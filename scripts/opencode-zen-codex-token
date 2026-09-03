@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+auth_file=${OPENCODE_AUTH_FILE:-${XDG_DATA_HOME:-$HOME/.local/share}/opencode/auth.json}
+
+[[ -f "$auth_file" && ! -L "$auth_file" ]] || {
+  printf 'error: OpenCode credential store is missing or invalid: %s\n' "$auth_file" >&2
+  exit 1
+}
+
+if stat -c %a "$auth_file" >/dev/null 2>&1; then
+  auth_mode=$(stat -c %a "$auth_file")
+else
+  auth_mode=$(stat -f %Lp "$auth_file")
+fi
+(( (8#$auth_mode & 077) == 0 )) || {
+  printf 'error: OpenCode credential store must not be group/world accessible\n' >&2
+  exit 1
+}
+
+jq -er '
+  .opencode
+  | select(.type == "api")
+  | .key
+  | select(type == "string" and length > 0)
+' "$auth_file"
