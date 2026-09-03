@@ -94,6 +94,8 @@ The path was verified from Air Blue on a phone hotspot while `big-red` remained 
 
 Codex Remote can control Codex tasks running on `big-red`; it is separate from whole-desktop RDP. Pair it through Codex Desktop rather than treating it as a graphical recovery path.
 
+The GPU-passthrough Windows VM also has a private Sunshine/Moonlight path. Sunshine and Tailscale run as automatic Windows services, and the VM is enrolled in the existing tailnet as `big-red-windows`. Air Blue's Moonlight app has a paired **Big Red Windows** tile that launches the Windows desktop directly with the tested 1280x800, 30 FPS, 4 Mbps H.264 profile. Sunshine credentials and Moonlight pairing material remain only in local credential stores. See [`BIG_RED_WINDOWS_MOONLIGHT.md`](BIG_RED_WINDOWS_MOONLIGHT.md) for the reproducible, non-secret setup and recovery checks.
+
 ## Quick checks
 
 ```bash
