@@ -1,0 +1,369 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  big-red-muse-peer auth
+  big-red-muse-peer review [--] [PROMPT...]
+  big-red-muse-peer work [--] [PROMPT...]
+  big-red-muse-peer run [--] [PROMPT...]
+  big-red-muse-peer usage [HOURS]
+
+If PROMPT is omitted, read it from stdin.
+
+review/work/run launch OpenCode as a full local coding agent using the pinned
+OpenCode Zen Muse Spark Contributor Free model. The mode changes only the
+instruction prefix.
+
+usage reads only the content-free local Muse delegated-run ledger. HOURS
+defaults to 168 (seven days).
+USAGE
+}
+
+home=${HOME:?HOME is required}
+local_bin="$home/.local/bin"
+opencode="$local_bin/opencode"
+run_timeout=${BIG_RED_AGENT_TIMEOUT:-90m}
+muse_model=${BIG_RED_MUSE_MODEL:-opencode/muse-spark-1.3-contributor-free}
+usage_root="$home/.local/state/big-red-muse-peer"
+usage_ledger="$usage_root/usage.jsonl"
+max_usage_ledger_bytes=$((64 * 1024 * 1024))
+
+require_opencode() {
+  [[ -x "$opencode" && ! -d "$opencode" ]] || {
+    printf 'error: OpenCode is not installed at %s\n' "$opencode" >&2
+    return 1
+  }
+}
+
+read_prompt() {
+  if (($#)); then
+    printf '%s' "$*"
+  else
+    cat
+  fi
+}
+
+project_root() {
+  local top
+  top=$(/usr/bin/git -C "$PWD" rev-parse --show-toplevel 2>/dev/null) || {
+    printf 'error: delegated Muse work must start inside a Git worktree\n' >&2
+    return 1
+  }
+  top=$(readlink -f "$top")
+  [[ -d "$top" && ! -L "$top" && -O "$top" ]] || {
+    printf 'error: delegated Muse worktree root is not one owner directory\n' >&2
+    return 1
+  }
+  printf '%s' "$top"
+}
+
+prefix_prompt() {
+  local selected_mode=$1
+  local prompt=$2
+  case "$selected_mode" in
+    review)
+      printf '%s' "Act as an independent senior reviewer. Use the full local agent toolset as useful: inspect the repository, run commands and tests, use configured web/MCP/plugins/skills, and investigate deeply. The main goal is review, but if a concrete fix is useful you may make it and explain the diff. $prompt"
+      ;;
+    work)
+      printf '%s' "Take ownership of this delegated coding task. Use the full local agent toolset, including commands, tests, configured web/MCP/plugins/skills, and file edits. Drive it to a concrete result and report what you changed and verified. $prompt"
+      ;;
+    run) printf '%s' "$prompt" ;;
+  esac
+}
+
+permission_flag() {
+  local help
+  help=$("$opencode" run --help 2>&1)
+  if grep -q -- '--auto' <<<"$help"; then
+    printf '%s' '--auto'
+  elif grep -q -- '--dangerously-skip-permissions' <<<"$help"; then
+    printf '%s' '--dangerously-skip-permissions'
+  else
+    printf 'error: installed OpenCode lacks an unattended-permission flag\n' >&2
+    return 1
+  fi
+}
+
+private_output_root() {
+  local candidate
+  candidate="/run/user/$(id -u)"
+  if [[ -d "$candidate" && ! -L "$candidate" && -O "$candidate" ]]; then
+    printf '%s' "$candidate"
+  else
+    printf '%s' "${TMPDIR:-/tmp}"
+  fi
+}
+
+record_usage() {
+  local selected_mode=$1 exit_code=$2 started_at=$3 settled_at=$4 wall_ms=$5 output_file=$6
+  install -d -m 0700 "$usage_root"
+  /usr/bin/python3 - "$usage_ledger" "$muse_model" "$selected_mode" "$exit_code" "$started_at" "$settled_at" "$wall_ms" "$output_file" <<'PY'
+from __future__ import annotations
+
+import fcntl
+import json
+import os
+import stat
+import sys
+
+ledger, model, mode = sys.argv[1:4]
+exit_code = int(sys.argv[4])
+started_at, settled_at = sys.argv[5:7]
+wall_ms = int(sys.argv[7])
+output_path = sys.argv[8]
+
+with open(output_path, "rb") as stream:
+    raw = stream.read()
+
+input_tokens = 0
+output_tokens = 0
+reasoning_tokens = 0
+cache_read_tokens = 0
+cache_write_tokens = 0
+reported_cost_usd = 0.0
+step_count = 0
+final_reason = None
+
+for line in raw.decode("utf-8", errors="replace").splitlines():
+    try:
+        value = json.loads(line)
+    except json.JSONDecodeError:
+        continue
+    if not isinstance(value, dict) or value.get("type") != "step_finish":
+        continue
+    part = value.get("part")
+    if not isinstance(part, dict):
+        continue
+    tokens = part.get("tokens")
+    if not isinstance(tokens, dict):
+        continue
+
+    def integer(value: object) -> int:
+        return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+
+    input_tokens += integer(tokens.get("input"))
+    output_tokens += integer(tokens.get("output"))
+    reasoning_tokens += integer(tokens.get("reasoning"))
+    cache = tokens.get("cache")
+    if isinstance(cache, dict):
+        cache_read_tokens += integer(cache.get("read"))
+        cache_write_tokens += integer(cache.get("write"))
+    cost = part.get("cost")
+    if isinstance(cost, (int, float)) and not isinstance(cost, bool) and cost >= 0:
+        reported_cost_usd += float(cost)
+    reason = part.get("reason")
+    if isinstance(reason, str):
+        final_reason = reason
+    step_count += 1
+
+total_tokens = input_tokens + output_tokens
+receipt = {
+    "schema": "big-red-muse-peer-usage/v1",
+    "provider": "opencode-zen",
+    "model": model,
+    "effort": "provider-default",
+    "mode": mode,
+    "billing_class": "contributor-free",
+    "actual_marginal_cost_usd": 0.0,
+    "reported_cost_usd": round(reported_cost_usd, 8),
+    "started_at": started_at,
+    "settled_at": settled_at,
+    "wall_duration_ms": wall_ms,
+    "exit_code": exit_code,
+    "provider_status": final_reason,
+    "usage_observed": step_count > 0,
+    "step_count": step_count,
+    "input_tokens": input_tokens if step_count else None,
+    "cached_input_tokens": cache_read_tokens if step_count else None,
+    "cache_creation_input_tokens": cache_write_tokens if step_count else None,
+    "output_tokens": output_tokens if step_count else None,
+    "reasoning_tokens": reasoning_tokens if step_count else None,
+    "total_tokens": total_tokens if step_count else None,
+    "result_bytes": len(raw),
+}
+line = json.dumps(receipt, sort_keys=True, separators=(",", ":")) + "\n"
+flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_CLOEXEC | os.O_NOFOLLOW
+fd = os.open(ledger, flags, 0o600)
+try:
+    metadata = os.fstat(fd)
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_uid != os.getuid()
+        or metadata.st_nlink != 1
+        or stat.S_IMODE(metadata.st_mode) != 0o600
+    ):
+        raise SystemExit("Muse usage ledger is not one private owner file")
+    with os.fdopen(fd, "a", encoding="utf-8", closefd=False) as stream:
+        fcntl.flock(stream, fcntl.LOCK_EX)
+        stream.write(line)
+        stream.flush()
+        os.fsync(stream.fileno())
+        fcntl.flock(stream, fcntl.LOCK_UN)
+finally:
+    os.close(fd)
+PY
+}
+
+print_result() {
+  local output_file=$1
+  /usr/bin/python3 - "$output_file" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+texts = []
+with open(path, "r", encoding="utf-8", errors="replace") as stream:
+    for line in stream:
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(value, dict) or value.get("type") != "text":
+            continue
+        part = value.get("part")
+        if isinstance(part, dict) and isinstance(part.get("text"), str):
+            texts.append(part["text"])
+if texts:
+    sys.stdout.write("".join(texts))
+    if not texts[-1].endswith("\n"):
+        sys.stdout.write("\n")
+PY
+}
+
+show_usage() {
+  local hours=${1:-168}
+  [[ "$hours" =~ ^[1-9][0-9]*$ ]] || {
+    printf 'error: usage window must be a positive integer number of hours\n' >&2
+    return 2
+  }
+  /usr/bin/python3 - "$usage_ledger" "$hours" "$max_usage_ledger_bytes" <<'PY'
+from __future__ import annotations
+
+import datetime as dt
+import fcntl
+import json
+import os
+import stat
+import sys
+
+path = sys.argv[1]
+hours = int(sys.argv[2])
+maximum = int(sys.argv[3])
+cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=hours)
+rows: list[dict[str, object]] = []
+
+try:
+    fd = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
+except FileNotFoundError:
+    fd = -1
+if fd >= 0:
+    try:
+        metadata = os.fstat(fd)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != os.getuid()
+            or metadata.st_nlink != 1
+            or stat.S_IMODE(metadata.st_mode) != 0o600
+            or metadata.st_size > maximum
+        ):
+            raise SystemExit("Muse usage ledger is not one bounded private owner file")
+        fcntl.flock(fd, fcntl.LOCK_SH)
+        raw = os.read(fd, maximum + 1)
+        fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+    if len(raw) > maximum:
+        raise SystemExit("Muse usage ledger exceeds its bounded read ceiling")
+    for line in raw.decode("utf-8", errors="replace").splitlines():
+        try:
+            value = json.loads(line)
+            settled = dt.datetime.fromisoformat(str(value["settled_at"]).replace("Z", "+00:00"))
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if settled >= cutoff:
+            rows.append(value)
+
+def integer(value: object) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+
+summary = {
+    "schema": "big-red-muse-peer-usage-summary/v1",
+    "window_hours": hours,
+    "run_count": len(rows),
+    "provider": "opencode-zen",
+    "billing_class": "contributor-free",
+    "actual_marginal_cost_usd": 0.0,
+    "input_tokens": sum(integer(row.get("input_tokens")) for row in rows),
+    "cached_input_tokens": sum(integer(row.get("cached_input_tokens")) for row in rows),
+    "cache_creation_input_tokens": sum(integer(row.get("cache_creation_input_tokens")) for row in rows),
+    "output_tokens": sum(integer(row.get("output_tokens")) for row in rows),
+    "reasoning_tokens": sum(integer(row.get("reasoning_tokens")) for row in rows),
+    "total_tokens": sum(integer(row.get("total_tokens")) for row in rows),
+    "reported_cost_usd": round(sum(float(row.get("reported_cost_usd", 0.0) or 0.0) for row in rows), 8),
+}
+print(json.dumps(summary, sort_keys=True, separators=(",", ":")))
+PY
+}
+
+[[ $# -ge 1 ]] || { usage >&2; exit 2; }
+mode=$1
+shift
+if [[ ${1:-} == -- ]]; then
+  shift
+fi
+
+case "$mode" in
+  usage)
+    [[ $# -le 1 ]] || { usage >&2; exit 2; }
+    show_usage "${1:-168}"
+    exit $?
+    ;;
+  auth|review|work|run) ;;
+  *) usage >&2; exit 2 ;;
+esac
+
+require_opencode
+
+if [[ "$mode" == auth ]]; then
+  (($# == 0)) || { printf 'error: auth mode accepts no prompt\n' >&2; exit 2; }
+  exec "$opencode" auth login --provider opencode
+fi
+
+root=$(project_root)
+prompt=$(read_prompt "$@")
+[[ -n "$prompt" ]] || {
+  printf 'error: Muse peer prompt is empty\n' >&2
+  exit 2
+}
+prompt=$(prefix_prompt "$mode" "$prompt")
+permission=$(permission_flag)
+
+output_root=$(private_output_root)
+output_file=$(umask 077; mktemp "$output_root/big-red-muse-peer-output.XXXXXX")
+cleanup() { rm -f "$output_file"; }
+trap cleanup EXIT HUP INT TERM
+
+started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+start_ms=$(date +%s%3N)
+set +e
+/usr/bin/timeout --foreground "$run_timeout" \
+  "$opencode" run \
+    --dir "$root" \
+    --model "$muse_model" \
+    --agent build \
+    --format json \
+    "$permission" \
+    "$prompt" >"$output_file"
+status=$?
+set -e
+end_ms=$(date +%s%3N)
+settled_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+wall_ms=$((end_ms - start_ms))
+
+print_result "$output_file"
+if ! record_usage "$mode" "$status" "$started_at" "$settled_at" "$wall_ms" "$output_file"; then
+  printf 'warning: Muse peer usage receipt could not be recorded\n' >&2
+fi
+exit "$status"
