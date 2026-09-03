@@ -232,16 +232,14 @@ verify_listener() {
 }
 
 verify_serve() {
-  local serve_json funnel_json dns_name
+  local serve_json dns_name
   serve_json=$(as_operator tailscale serve status --json)
-  funnel_json=$(as_operator tailscale funnel status --json)
-  python3 - "$backend" "$serve_json" "$funnel_json" <<'PY'
+  python3 - "$backend" "$serve_json" <<'PY'
 import json
 import sys
 
 backend = sys.argv[1]
 serve = json.loads(sys.argv[2])
-funnel = json.loads(sys.argv[3])
 
 def strings(value):
     if isinstance(value, str):
@@ -256,7 +254,8 @@ def strings(value):
 
 if backend not in set(strings(serve)):
     raise SystemExit("Tailscale Serve does not target the OpenCode loopback backend")
-if funnel not in ({}, None):
+allow_funnel = serve.get("AllowFunnel", {}) if isinstance(serve, dict) else {}
+if isinstance(allow_funnel, dict) and any(value is True for value in allow_funnel.values()):
     raise SystemExit("Tailscale Funnel must remain disabled")
 PY
   dns_name=$(tailnet_dns_name)

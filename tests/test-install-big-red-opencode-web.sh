@@ -58,8 +58,13 @@ cat > "$fakebin/tailscale" <<SH
 #!/usr/bin/env bash
 case "\$*" in
   'status --json') printf '%s\n' '{"Self":{"DNSName":"big-red.example.ts.net."}}' ;;
-  'serve status --json') printf '%s\n' '{"Web":{"big-red.example.ts.net:443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:4096"}}}}}' ;;
-  'funnel status --json') printf '%s\n' '{}' ;;
+  'serve status --json')
+    if [[ \${BIG_RED_OPENCODE_WEB_TEST_FUNNEL:-0} == 1 ]]; then
+      printf '%s\n' '{"Web":{"big-red.example.ts.net:443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:4096"}}}},"AllowFunnel":{"big-red.example.ts.net:443":true}}'
+    else
+      printf '%s\n' '{"Web":{"big-red.example.ts.net:443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:4096"}}}}}'
+    fi
+    ;;
   serve*) printf 'tailscale=<%s>\n' "\$*" >> '$log' ;;
   *) exit 2 ;;
 esac
@@ -123,6 +128,12 @@ grep -q 'tailscale=<serve --bg --yes --https=443 http://127.0.0.1:4096>' "$log"
 
 $INSTALLER --verify-only --operator-user "$user" > "$temporary/verify.out"
 grep -q '^server_password=configured$' "$temporary/verify.out"
+if BIG_RED_OPENCODE_WEB_TEST_FUNNEL=1 $INSTALLER --verify-only --operator-user "$user" \
+  > "$temporary/funnel.out" 2>&1; then
+  printf 'error: verifier accepted a public Funnel configuration\n' >&2
+  exit 1
+fi
+grep -q 'Tailscale Funnel must remain disabled' "$temporary/funnel.out"
 if grep -Fq "$(tr -d '\n' < "$home/.config/big-red-opencode-web/server-password")" \
   "$temporary/apply.out" "$temporary/verify.out" "$log"; then
   printf 'error: OpenCode Web password leaked into test output\n' >&2
