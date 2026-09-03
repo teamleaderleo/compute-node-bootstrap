@@ -87,7 +87,7 @@ if [[ "$configured" == false ]]; then
 elif [[ "$url" == */global/health ]]; then
   printf '%s\n' '{"healthy":true,"version":"test"}'
 elif [[ "$url" == */path ]]; then
-  printf '%s\n' "{\"worktree\":\"$HOME/Projects\"}"
+  printf '%s\n' "{\"worktree\":\"/\",\"directory\":\"$HOME/Projects\"}"
 elif [[ "$url" == *'/file?path=.' ]]; then
   printf '%s\n' '[{"name":"compute-node-bootstrap"},{"name":"leo-workspace"}]'
 else

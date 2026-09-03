@@ -204,7 +204,7 @@ verify_http() {
   health=$(authenticated_get "$health_url")
   jq -e '.healthy == true and (.version | type == "string")' <<<"$health" >/dev/null
   path=$(authenticated_get "$backend/path")
-  [[ $(jq -r '.worktree // .directory // empty' <<<"$path") == "$projects_root" ]] || {
+  [[ $(jq -r '.directory // .worktree // empty' <<<"$path") == "$projects_root" ]] || {
     printf 'error: OpenCode Web is not rooted at the canonical Projects directory\n' >&2
     return 1
   }
