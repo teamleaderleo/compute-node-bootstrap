@@ -264,6 +264,19 @@ PY
   printf 'tailscale_https_url=https://%s/\n' "$dns_name"
 }
 
+wait_for_web() {
+  local _
+  for _ in {1..40}; do
+    if [[ $(as_operator systemctl --user is-active "$unit_name" 2>/dev/null || true) == active ]] && \
+      [[ $(as_operator curl --silent --output /dev/null --write-out '%{http_code}' --max-time 2 "$health_url" 2>/dev/null || true) == 401 ]]; then
+      return 0
+    fi
+    sleep 0.25
+  done
+  printf 'error: OpenCode Web did not become password-protected and ready\n' >&2
+  return 1
+}
+
 verify() {
   require_tools
   [[ -x "$opencode" && ! -d "$opencode" ]] || {
@@ -278,6 +291,7 @@ verify() {
     printf 'error: installed OpenCode Web unit does not match the reviewed source\n' >&2
     return 1
   }
+  wait_for_web
   [[ $(as_operator systemctl --user is-enabled "$unit_name") == enabled ]]
   [[ $(as_operator systemctl --user is-active "$unit_name") == active ]]
   [[ $(loginctl show-user "$operator_user" -p Linger --value) == yes ]]
@@ -299,14 +313,6 @@ install_web() {
   as_operator systemctl --user daemon-reload
   as_operator systemctl --user enable "$unit_name"
   as_operator systemctl --user restart "$unit_name"
-  local _
-  for _ in {1..40}; do
-    if [[ $(as_operator systemctl --user is-active "$unit_name" 2>/dev/null || true) == active ]] && \
-      [[ $(as_operator curl --silent --output /dev/null --write-out '%{http_code}' --max-time 2 "$health_url" 2>/dev/null || true) == 401 ]]; then
-      break
-    fi
-    sleep 0.25
-  done
   as_operator tailscale serve --bg --yes --https="$https_port" "$backend"
   verify
 }
