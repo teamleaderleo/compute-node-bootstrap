@@ -53,6 +53,7 @@ The [`scripts/`](scripts/) directory is only for the remote operator after hando
 - [`big-red` observed state and recovery](docs/BIG_RED_STATE.md)
 - [`big-red` workstation applications and file handlers](docs/BIG_RED_WORKSTATION.md)
 - [Claude Code + Antigravity peer-agent runbook](docs/BIG_RED_AGENT_PEERS.md)
+- [OpenCode Web over private Tailscale Serve](docs/BIG_RED_OPENCODE_WEB.md)
 - [Beryl 7 pre-departure checklist](docs/BERYL7_BEFORE_LEAVING.md)
 - [Beryl 7 → REDMI exit node](docs/GLINET_EXIT_NODE.md)
 - [CI-node notes](docs/CI_NODE.md)
