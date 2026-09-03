@@ -7,8 +7,7 @@ After=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=%h/Projects
-LoadCredential=server-password:%h/.config/big-red-opencode-web/server-password
-ExecStart=/bin/bash -c 'export OPENCODE_SERVER_PASSWORD="$(<"$CREDENTIALS_DIRECTORY/server-password")"; exec "$HOME/.local/bin/opencode" web --hostname 127.0.0.1 --port 4096'
+ExecStart=%h/.local/bin/opencode web --hostname 127.0.0.1 --port 4096
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=30s
