@@ -104,6 +104,12 @@ elif [[ "$write_code" == true ]]; then
   printf '200'
 elif [[ "$url" == */global/health ]]; then
   printf '%s\n' '{"healthy":true,"version":"test"}'
+elif [[ "$url" == */config ]]; then
+  if [[ ${BIG_RED_OPENCODE_WEB_TEST_WRONG_WEB_MODEL:-0} == 1 ]]; then
+    printf '%s\n' '{"model":"opencode/not-muse"}'
+  else
+    printf '%s\n' '{"model":"opencode/muse-spark-1.3-contributor-free"}'
+  fi
 elif [[ "$url" == */path ]]; then
   printf '%s\n' "{\"worktree\":\"/\",\"directory\":\"$HOME/Projects\"}"
 elif [[ "$url" == *'/file?path=.' ]]; then
@@ -120,6 +126,7 @@ if grep -q 'OPENCODE_SERVER_PASSWORD\|LoadCredential' "$UNIT"; then
   printf 'error: unit still enables browser Basic Auth\n' >&2
   exit 1
 fi
+grep -q 'OPENCODE_CONFIG_CONTENT.*opencode/muse-spark-1.3-contributor-free' "$UNIT"
 grep -q -- '--hostname 127.0.0.1 --port 4096' "$UNIT"
 if grep -q -- '--hostname 0.0.0.0' "$UNIT"; then
   printf 'error: unit exposes OpenCode Web beyond loopback\n' >&2
@@ -141,12 +148,19 @@ grep -q 'tailscale=<serve --bg --yes --https=443 http://127.0.0.1:4096>' "$log"
 
 $INSTALLER --verify-only --operator-user "$user" > "$temporary/verify.out"
 grep -q '^opencode_web_browser_auth=tailnet_only$' "$temporary/verify.out"
+grep -q '^opencode_web_model=opencode/muse-spark-1.3-contributor-free$' "$temporary/verify.out"
 if BIG_RED_OPENCODE_WEB_TEST_AUTH_REQUIRED=1 $INSTALLER --verify-only --operator-user "$user" \
   > "$temporary/auth.out" 2>&1; then
   printf 'error: verifier accepted an auth-challenged browser route\n' >&2
   exit 1
 fi
 grep -q 'did not become login-free and ready' "$temporary/auth.out"
+if BIG_RED_OPENCODE_WEB_TEST_WRONG_WEB_MODEL=1 $INSTALLER --verify-only --operator-user "$user" \
+  > "$temporary/web-model.out" 2>&1; then
+  printf 'error: verifier accepted the wrong Web default model\n' >&2
+  exit 1
+fi
+grep -q 'does not default to the exact Muse Contributor Free model' "$temporary/web-model.out"
 if BIG_RED_OPENCODE_WEB_TEST_FUNNEL=1 $INSTALLER --verify-only --operator-user "$user" \
   > "$temporary/funnel.out" 2>&1; then
   printf 'error: verifier accepted a public Funnel configuration\n' >&2
