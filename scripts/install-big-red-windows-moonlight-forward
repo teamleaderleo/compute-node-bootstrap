@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+mode=apply
+vm_name=win11-starsector
+network_name=default
+guest_ip=192.168.122.252
+script_root=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+runtime_source="$script_root/big-red-windows-moonlight-forward"
+unit_source="$script_root/../systemd/big-red-windows-moonlight-forward.service"
+runtime_target=${BIG_RED_WINDOWS_FORWARD_RUNTIME_TARGET:-/usr/local/sbin/big-red-windows-moonlight-forward}
+unit_target=${BIG_RED_WINDOWS_FORWARD_UNIT_TARGET:-/etc/systemd/system/big-red-windows-moonlight-forward.service}
+
+usage() {
+  cat <<'USAGE'
+Usage: install-big-red-windows-moonlight-forward [--plan|--verify-only]
+
+Install or verify the boot-persistent, tailnet-only Sunshine forwarding route
+for Big Red's win11-starsector guest.
+USAGE
+}
+
+while (($#)); do
+  case "$1" in
+    --plan) mode=plan; shift ;;
+    --verify-only) mode=verify; shift ;;
+    --help|-h) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+  esac
+done
+
+as_root() {
+  if ((EUID == 0)); then
+    "$@"
+  else
+    command -v sudo >/dev/null || {
+      printf 'error: sudo is required to install the Moonlight forwarding route\n' >&2
+      return 1
+    }
+    sudo "$@"
+  fi
+}
+
+require_tools() {
+  local tool
+  for tool in awk cmp grep install python3 sha256sum systemctl virsh; do
+    command -v "$tool" >/dev/null || {
+      printf 'error: required host tool is missing: %s\n' "$tool" >&2
+      return 1
+    }
+  done
+  [[ -f "$runtime_source" && -x "$runtime_source" && ! -L "$runtime_source" ]] || {
+    printf 'error: forwarding runtime source is missing, non-executable, or invalid\n' >&2
+    return 1
+  }
+  [[ -f "$unit_source" && ! -L "$unit_source" ]] || {
+    printf 'error: forwarding unit source is missing or invalid\n' >&2
+    return 1
+  }
+}
+
+guest_mac() {
+  virsh domiflist "$vm_name" | awk -v network="$network_name" '$2 == "network" && $3 == network { print $5; exit }'
+}
+
+reservation_state() {
+  local mac network_xml
+  mac=$(guest_mac)
+  [[ "$mac" =~ ^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$ ]] || {
+    printf 'error: could not resolve %s MAC on libvirt network %s\n' "$vm_name" "$network_name" >&2
+    return 1
+  }
+  network_xml=$(virsh net-dumpxml "$network_name")
+  NETWORK_XML="$network_xml" python3 - "$mac" "$guest_ip" <<'PY'
+import os
+import sys
+import xml.etree.ElementTree as ET
+
+mac = sys.argv[1].lower()
+ip = sys.argv[2]
+root = ET.fromstring(os.environ["NETWORK_XML"])
+hosts = root.findall("./ip/dhcp/host")
+for host in hosts:
+    host_mac = host.get("mac", "").lower()
+    host_ip = host.get("ip", "")
+    if host_mac == mac and host_ip == ip:
+        print("exact")
+        raise SystemExit(0)
+    if host_mac == mac or host_ip == ip:
+        print("conflict")
+        raise SystemExit(0)
+print("missing")
+PY
+}
+
+print_plan() {
+  local mac state
+  mac=$(guest_mac)
+  state=$(reservation_state)
+  printf 'vm_name=%s\n' "$vm_name"
+  printf 'libvirt_network=%s\n' "$network_name"
+  printf 'guest_mac=%s\n' "$mac"
+  printf 'guest_ipv4=%s\n' "$guest_ip"
+  printf 'dhcp_reservation=%s\n' "$state"
+  "$runtime_source" plan
+  printf 'system_service=big-red-windows-moonlight-forward.service\n'
+}
+
+ensure_reservation() {
+  local mac state reservation
+  mac=$(guest_mac)
+  state=$(reservation_state)
+  case "$state" in
+    exact) return 0 ;;
+    conflict)
+      printf 'error: libvirt DHCP reservation conflicts with %s at %s\n' "$vm_name" "$guest_ip" >&2
+      return 1
+      ;;
+    missing)
+      reservation="<host mac='$mac' name='$vm_name' ip='$guest_ip'/>"
+      virsh net-update "$network_name" add-last ip-dhcp-host "$reservation" --live --config
+      ;;
+    *)
+      printf 'error: unexpected reservation state: %s\n' "$state" >&2
+      return 1
+      ;;
+  esac
+  [[ $(reservation_state) == exact ]] || {
+    printf 'error: libvirt DHCP reservation was not applied\n' >&2
+    return 1
+  }
+}
+
+install_files() {
+  as_root install -D -m 0755 "$runtime_source" "$runtime_target"
+  as_root install -D -m 0644 "$unit_source" "$unit_target"
+  printf 'runtime_sha256=%s\n' "$(sha256sum "$runtime_source" | awk '{print $1}')"
+  printf 'unit_sha256=%s\n' "$(sha256sum "$unit_source" | awk '{print $1}')"
+}
+
+verify() {
+  require_tools
+  [[ $(reservation_state) == exact ]] || {
+    printf 'error: exact libvirt DHCP reservation is missing\n' >&2
+    return 1
+  }
+  as_root cmp -s "$runtime_source" "$runtime_target" || {
+    printf 'error: installed forwarding runtime does not match reviewed source\n' >&2
+    return 1
+  }
+  as_root cmp -s "$unit_source" "$unit_target" || {
+    printf 'error: installed forwarding unit does not match reviewed source\n' >&2
+    return 1
+  }
+  [[ $(systemctl is-enabled big-red-windows-moonlight-forward.service) == enabled ]]
+  [[ $(systemctl is-active big-red-windows-moonlight-forward.service) == active ]]
+  as_root "$runtime_target" verify
+  printf 'dhcp_reservation=exact\n'
+  printf 'system_service=enabled,active\n'
+}
+
+install_forwarding() {
+  print_plan
+  ensure_reservation
+  install_files
+  as_root systemctl daemon-reload
+  as_root systemctl enable --now big-red-windows-moonlight-forward.service
+  verify
+}
+
+case "$mode" in
+  plan) require_tools; print_plan ;;
+  verify) verify ;;
+  apply) require_tools; install_forwarding ;;
+esac

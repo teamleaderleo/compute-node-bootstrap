@@ -1,0 +1,13 @@
+[Unit]
+Description=Tailnet-only Sunshine forwarding to the Big Red Windows VM
+Requires=tailscaled.service libvirtd.service
+After=network-online.target tailscaled.service libvirtd.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/big-red-windows-moonlight-forward apply
+ExecStop=/usr/local/sbin/big-red-windows-moonlight-forward remove
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

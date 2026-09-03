@@ -3,10 +3,10 @@
 This is the private low-friction desktop path for Big Red's GPU-passthrough Windows VM:
 
 ```text
-Air Blue Moonlight -> Tailscale -> big-red-windows -> Sunshine -> Windows Desktop
+Air Blue Moonlight -> Tailscale -> big-red -> restricted host forwarding -> Sunshine -> Windows Desktop
 ```
 
-It does not expose Sunshine to the public internet. The Windows guest has only its libvirt NAT interface and its tailnet interface; there is no router port-forward. The stable client target is the guest's MagicDNS name, `big-red-windows.<tailnet>.ts.net`, rather than an address from the libvirt network.
+It does not expose Sunshine to the public internet. The Ubuntu host forwards only Sunshine's pairing, control, audio and video ports arriving on `tailscale0`; the Web UI port is excluded. There is no router port-forward or LAN listener. The stable client target is Big Red's MagicDNS name, `big-red.<tailnet>.ts.net`.
 
 This route complements, rather than replaces, the Ubuntu host's SSH, Codex Remote, and GNOME Remote Desktop paths. Sunshine runs inside the Windows guest and does not depend on an Ubuntu graphical session. The guest owns the passthrough GPU while it is running.
 
@@ -20,6 +20,9 @@ This route complements, rather than replaces, the Ubuntu host's SSH, Codex Remot
 - Moonlight Desktop profile: 1280x800, 30 FPS, 4 Mbps, H.264, remote-desktop mouse mode
 - Moonlight Direct Launch: enabled for Desktop
 - Windows services: `SunshineService` and `Tailscale`, both Automatic
+- Ubuntu service: `big-red-windows-moonlight-forward.service`, enabled and active
+- Tailnet-only forwarding: TCP 47984, 47989 and 48010; UDP 47998-48000
+- Sunshine Web UI 47990: not forwarded by the Ubuntu route
 
 The Sunshine Web UI has a generated password. The credential is not in this repository, command output, or machine-state prose. Keep it in the operator's private password manager or OS credential store. Moonlight's client certificate and pairing key likewise remain in its application data.
 
@@ -44,6 +47,7 @@ Set Sunshine's Web UI credentials using its supported credential command or Web 
 ```text
 sunshine_name = Big Red Windows
 udp_batch_send = 0
+external_ip = <Big Red Tailscale IPv4>
 ```
 
 `udp_batch_send = 0` avoids the observed Windows `WSASendMsg` failure on this route. Leave the built-in **Desktop** application enabled. Pair each Moonlight client through Sunshine's PIN page.
@@ -55,7 +59,7 @@ Install Moonlight and add the Windows guest by MagicDNS name:
 ```bash
 brew install --cask moonlight
 /Applications/Moonlight.app/Contents/MacOS/Moonlight add \
-  big-red-windows.<tailnet>.ts.net
+  big-red.<tailnet>.ts.net
 ```
 
 Do not use Homebrew's symlinked Moonlight executable if Qt reports missing platform plugins; launch the executable inside the application bundle as shown above.
@@ -87,14 +91,22 @@ Get-Service SunshineService,Tailscale |
 On Air Blue:
 
 ```bash
-tailscale ping big-red-windows.<tailnet>.ts.net
+tailscale ping big-red.<tailnet>.ts.net
 /Applications/Moonlight.app/Contents/MacOS/Moonlight list \
-  big-red-windows.<tailnet>.ts.net
+  big-red.<tailnet>.ts.net
 ```
 
 The Moonlight list must include `Desktop`. Launch the **Big Red Windows** tile and confirm the Windows desktop renders and accepts keyboard and mouse input. Restart both Windows services and repeat the checks to verify persistence.
 
-The observed remote path currently relays through a Tailscale DERP region instead of establishing a direct UDP path. The tested profile remains usable and hardware encoding/decoding keeps endpoint processing low, but interaction latency follows the relay path. Re-run `tailscale ping` after either side's network changes; a direct result materially improves responsiveness without changing Moonlight or Sunshine.
+The Windows guest's own Tailscale node may still use DERP because it sits behind libvirt and the upstream NAT. Normal Air Blue use targets the Ubuntu host instead, reusing its direct Tailscale UDP path. The checked-in installer owns the narrow nftables forwarding table and the guest's fixed libvirt DHCP reservation:
+
+```bash
+scripts/install-big-red-windows-moonlight-forward --plan
+scripts/install-big-red-windows-moonlight-forward
+scripts/install-big-red-windows-moonlight-forward --verify-only
+```
+
+Sunshine advertises Big Red's Tailscale IPv4 as `external_ip`, so Moonlight keeps the host route for the RTSP session. This value is not a public address and does not create a listener by itself.
 
 ## Recovery
 
