@@ -37,6 +37,6 @@ The verifier checks the private credential shape, enabled/active service and lin
 To disable the browser route intentionally:
 
 ```bash
-tailscale serve --https=443 off
+tailscale serve --https=443 --set-path=/ off
 systemctl --user disable --now big-red-opencode-web.service
 ```
