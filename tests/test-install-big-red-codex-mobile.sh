@@ -93,7 +93,7 @@ if BIG_RED_CODEX_MOBILE_TEST_PUBLIC_LISTENER=1 $INSTALLER --verify-only >/dev/nu
 fi
 
 grep -q -- '--interface 127.0.0.1 --port 7681' "$ROOT/systemd/big-red-codex-mobile.service"
-grep -q -- 'codex -p "$profile"' "$ROOT/scripts/big-red-codex-mobile"
+grep -q -- "codex -p \"\$profile\"" "$ROOT/scripts/big-red-codex-mobile"
 if grep -Rqs 'muse-max' "$ROOT/scripts/big-red-codex-mobile" "$ROOT/systemd/big-red-codex-mobile.service" "$ROOT/docs/BIG_RED_CODEX_MOBILE.md"; then
   printf 'obsolete muse-max profile found\n' >&2
   exit 1
