@@ -179,6 +179,7 @@ verify_profiles() {
 }
 
 verify() {
+  local web_page
   require_tools
   command -v ttyd >/dev/null || { printf 'error: ttyd is not installed\n' >&2; return 1; }
   [[ $(systemctl is-enabled ttyd.service 2>/dev/null || true) == masked ]] || {
@@ -202,7 +203,8 @@ verify() {
   [[ $(as_operator systemctl --user is-enabled "$unit_name") == enabled ]]
   [[ $(as_operator systemctl --user is-active "$unit_name") == active ]]
   [[ $(loginctl show-user "$operator_user" -p Linger --value) == yes ]]
-  as_operator curl --silent --fail --max-time 10 "$backend" | grep -qi ttyd
+  web_page=$(as_operator curl --silent --fail --max-time 10 "$backend")
+  grep -qi ttyd <<<"$web_page"
   verify_listener
   verify_serve
   verify_profiles
