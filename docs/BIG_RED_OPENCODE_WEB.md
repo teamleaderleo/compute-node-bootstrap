@@ -14,6 +14,8 @@ scripts/install-big-red-opencode-web --verify-only
 
 Tailnet membership is the browser access control. OpenCode does not present a second HTTP Basic Auth prompt, because that prompt is poorly retained by mobile Safari and creates needless repeated-login friction. The backend remains loopback-only, Tailscale Serve remains tailnet-only, and Funnel remains disabled.
 
+The service pins `opencode/muse-spark-1.3-contributor-free` as the Web UI default. The installer verifies both that the exact model remains in OpenCode's catalog and that the running server reports it as the active default.
+
 An older installation may retain `~/.config/big-red-opencode-web/server-password`. The current service does not read it. The installer deliberately leaves that private file untouched instead of printing, moving, or deleting it.
 
 ## Persistence and access

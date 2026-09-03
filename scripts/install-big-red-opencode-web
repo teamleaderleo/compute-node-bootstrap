@@ -119,7 +119,7 @@ install_unit() {
 }
 
 verify_http() {
-  local status health path files
+  local status health config path files
   status=$(as_operator curl --silent --output /dev/null --write-out '%{http_code}' --max-time 10 "$health_url")
   [[ "$status" == 200 ]] || {
     printf 'error: login-free OpenCode health request returned HTTP %s\n' "$status" >&2
@@ -127,6 +127,11 @@ verify_http() {
   }
   health=$(as_operator curl --silent --show-error --fail --max-time 10 "$health_url")
   jq -e '.healthy == true and (.version | type == "string")' <<<"$health" >/dev/null
+  config=$(as_operator curl --silent --show-error --fail --max-time 10 "$backend/config")
+  jq -e --arg model "$muse_model" '.model == $model' <<<"$config" >/dev/null || {
+    printf 'error: OpenCode Web does not default to the exact Muse Contributor Free model\n' >&2
+    return 1
+  }
   path=$(as_operator curl --silent --show-error --fail --max-time 10 "$backend/path")
   [[ $(jq -r '.directory // .worktree // empty' <<<"$path") == "$projects_root" ]] || {
     printf 'error: OpenCode Web is not rooted at the canonical Projects directory\n' >&2
@@ -139,6 +144,7 @@ verify_http() {
   }
   printf 'opencode_web_health=healthy\n'
   printf 'opencode_web_browser_auth=tailnet_only\n'
+  printf 'opencode_web_model=%s\n' "$muse_model"
   printf 'opencode_web_projects=compute-node-bootstrap,leo-workspace\n'
 }
 
