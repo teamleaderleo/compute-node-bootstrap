@@ -1,0 +1,234 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+mode=apply
+operator_user=${SUDO_USER:-leo}
+script_root=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+repo_root=$(cd "$script_root/.." && pwd)
+token_source="$script_root/opencode-zen-codex-token"
+profile_source_root="$repo_root/codex"
+model='muse-spark-1.3-contributor-free'
+provider='opencode_zen'
+base_url='https://opencode.ai/zen/v1'
+install_temporary=
+
+usage() {
+  cat <<'USAGE'
+Usage: install-big-red-codex-muse [--plan|--verify-only] [--operator-user USER]
+
+Install or verify the Big Red Codex profiles for OpenCode Zen's Muse Spark 1.3
+Contributor Free route. The existing Codex base config and default model are
+never modified. Authentication reuses the operator's local OpenCode credential
+through a reviewed command-backed bearer-token helper.
+USAGE
+}
+
+while (($#)); do
+  case "$1" in
+    --plan) mode=plan; shift ;;
+    --verify-only) mode=verify; shift ;;
+    --operator-user)
+      [[ $# -ge 2 ]] || { usage >&2; exit 2; }
+      operator_user=$2
+      shift 2
+      ;;
+    --help|-h) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+  esac
+done
+
+operator_home=$(getent passwd "$operator_user" | cut -d: -f6 || true)
+[[ -n "$operator_home" && -d "$operator_home" ]] || {
+  printf 'error: operator user %s has no existing home directory\n' "$operator_user" >&2
+  exit 1
+}
+
+codex_home="$operator_home/.codex"
+local_libexec="$operator_home/.local/libexec"
+token_helper="$local_libexec/opencode-zen-codex-token"
+profiles=(muse-high muse-xhigh muse-max)
+
+as_operator() {
+  if [[ $(id -un) == "$operator_user" ]]; then
+    env HOME="$operator_home" USER="$operator_user" LOGNAME="$operator_user" \
+      PATH="$operator_home/.local/bin:${PATH:-/usr/local/bin:/usr/bin:/bin}" "$@"
+  else
+    command -v sudo >/dev/null || {
+      printf 'error: sudo is required to act as operator user %s\n' "$operator_user" >&2
+      return 1
+    }
+    sudo -u "$operator_user" env HOME="$operator_home" USER="$operator_user" LOGNAME="$operator_user" \
+      PATH="$operator_home/.local/bin:${PATH:-/usr/local/bin:/usr/bin:/bin}" "$@"
+  fi
+}
+
+require_tools() {
+  local tool
+  for tool in bash getent install jq python3 sha256sum stat sed mktemp; do
+    command -v "$tool" >/dev/null || {
+      printf 'error: required host tool is missing: %s\n' "$tool" >&2
+      return 1
+    }
+  done
+  [[ -f "$token_source" && ! -L "$token_source" ]] || {
+    printf 'error: token helper source is missing or invalid\n' >&2
+    return 1
+  }
+  local profile
+  for profile in "${profiles[@]}"; do
+    [[ -f "$profile_source_root/$profile.config.toml.in" ]] || {
+      printf 'error: profile source is missing: %s\n' "$profile" >&2
+      return 1
+    }
+  done
+}
+
+find_codex() {
+  as_operator bash -c 'command -v codex'
+}
+
+print_plan() {
+  require_tools
+  printf 'operator_user=%s\n' "$operator_user"
+  printf 'codex_install=existing_install_required\n'
+  printf 'base_config_modified=no\n'
+  printf 'provider=%s\n' "$provider"
+  printf 'provider_base_url=%s\n' "$base_url"
+  printf 'wire_api=responses\n'
+  printf 'model=%s\n' "$model"
+  printf 'profiles=muse-high,muse-xhigh,muse-max\n'
+  printf 'profile_efforts=high,xhigh,max\n'
+  printf 'token_helper_relative=.local/libexec/opencode-zen-codex-token\n'
+  printf 'token_helper_sha256=%s\n' "$(sha256sum "$token_source" | awk '{print $1}')"
+  printf 'authentication=command_backed_existing_opencode_credential\n'
+  printf 'credential_value_copied=no\n'
+}
+
+render_profile() {
+  local source=$1 destination=$2
+  sed "s|@TOKEN_COMMAND@|$token_helper|g" "$source" > "$destination"
+}
+
+cleanup_install_temporary() {
+  if [[ -n "${install_temporary:-}" ]]; then
+    rm -rf "$install_temporary"
+    install_temporary=
+  fi
+}
+
+install_profiles() {
+  require_tools
+  print_plan
+  local profile source destination
+  as_operator mkdir -p "$codex_home" "$local_libexec"
+  as_operator install -m 0755 "$token_source" "$token_helper"
+  install_temporary=$(mktemp -d)
+  trap cleanup_install_temporary EXIT
+  for profile in "${profiles[@]}"; do
+    source="$profile_source_root/$profile.config.toml.in"
+    destination="$codex_home/$profile.config.toml"
+    if [[ -e "$destination" || -L "$destination" ]]; then
+      [[ -f "$destination" && ! -L "$destination" ]] || {
+        printf 'error: refusing to replace unexpected profile object: %s\n' "$destination" >&2
+        return 1
+      }
+      grep -q '^# Managed by install-big-red-codex-muse\.$' "$destination" || {
+        printf 'error: refusing to replace unmanaged profile: %s\n' "$destination" >&2
+        return 1
+      }
+    fi
+    render_profile "$source" "$install_temporary/$profile.config.toml"
+    as_operator install -m 0600 "$install_temporary/$profile.config.toml" "$destination"
+  done
+  verify
+  cleanup_install_temporary
+  trap - EXIT
+}
+
+verify_profile() {
+  local profile=$1 effort=$2 path
+  path="$codex_home/$profile.config.toml"
+  [[ -f "$path" && ! -L "$path" ]] || {
+    printf 'error: managed profile is missing or invalid: %s\n' "$path" >&2
+    return 1
+  }
+  [[ $(stat -c %a "$path" 2>/dev/null || stat -f %Lp "$path") == 600 ]] || {
+    printf 'error: managed profile mode is not 0600: %s\n' "$path" >&2
+    return 1
+  }
+  python3 - "$path" "$effort" "$token_helper" <<'PY'
+import pathlib
+import sys
+import tomllib
+
+path, effort, token_helper = sys.argv[1:]
+with pathlib.Path(path).open("rb") as handle:
+    config = tomllib.load(handle)
+
+assert config["model_provider"] == "opencode_zen", path
+assert config["model"] == "muse-spark-1.3-contributor-free", path
+assert config["model_reasoning_effort"] == effort, (
+    path,
+    config["model_reasoning_effort"],
+    effort,
+)
+provider = config["model_providers"]["opencode_zen"]
+assert provider["name"] == "OpenCode Zen", path
+assert provider["base_url"] == "https://opencode.ai/zen/v1", path
+assert provider["wire_api"] == "responses", path
+assert provider["auth"]["command"] == token_helper, path
+assert provider["auth"]["refresh_interval_ms"] == 0, path
+assert config["features"] == {
+    "apps": False,
+    "plugins": False,
+    "multi_agent": False,
+}, path
+PY
+}
+
+verify() {
+  require_tools
+  local codex version token installed_sha source_sha profile
+  codex=$(find_codex) || {
+    printf 'error: Codex CLI is not installed for %s\n' "$operator_user" >&2
+    return 1
+  }
+  [[ -f "$token_helper" && ! -L "$token_helper" && -x "$token_helper" ]] || {
+    printf 'error: managed token helper is missing or invalid\n' >&2
+    return 1
+  }
+  installed_sha=$(sha256sum "$token_helper" | awk '{print $1}')
+  source_sha=$(sha256sum "$token_source" | awk '{print $1}')
+  [[ "$installed_sha" == "$source_sha" ]] || {
+    printf 'error: managed token helper does not match the reviewed checkout\n' >&2
+    return 1
+  }
+  token=$(as_operator "$token_helper")
+  [[ -n "$token" ]] || {
+    printf 'error: OpenCode Zen token helper returned no credential\n' >&2
+    return 1
+  }
+  verify_profile muse-high high
+  verify_profile muse-xhigh xhigh
+  verify_profile muse-max max
+  for profile in "${profiles[@]}"; do
+    as_operator "$codex" --strict-config -p "$profile" --version >/dev/null
+  done
+  version=$(as_operator "$codex" --version | head -c 500)
+  printf 'codex_install=verified\n'
+  printf 'codex_version=%s\n' "$version"
+  printf 'base_config_modified=no\n'
+  printf 'provider=%s\n' "$provider"
+  printf 'provider_base_url=%s\n' "$base_url"
+  printf 'wire_api=responses\n'
+  printf 'model=%s\n' "$model"
+  printf 'profiles=muse-high,muse-xhigh,muse-max\n'
+  printf 'profile_efforts=high,xhigh,max\n'
+  printf 'zen_auth=verified\n'
+}
+
+case "$mode" in
+  plan) print_plan ;;
+  verify) verify ;;
+  apply) install_profiles ;;
+esac
