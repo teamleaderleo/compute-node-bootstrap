@@ -74,7 +74,11 @@ $INSTALLER --operator-user muse-test > "$temporary/apply.out"
 grep -q '^codex_install=verified$' "$temporary/apply.out"
 grep -q '^zen_auth=verified$' "$temporary/apply.out"
 [[ -x "$home/.local/libexec/opencode-zen-codex-token" ]]
-[[ $($home/.local/libexec/opencode-zen-codex-token) == test-only-zen-key ]]
+token=$(
+  HOME="$home" XDG_DATA_HOME= OPENCODE_AUTH_FILE= \
+    "$home/.local/libexec/opencode-zen-codex-token"
+)
+[[ "$token" == test-only-zen-key ]]
 [[ ! -e "$home/.codex/muse-max.config.toml" ]]
 
 for pair in muse-high:high muse-xhigh:xhigh; do
