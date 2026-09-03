@@ -39,6 +39,8 @@ SH
 cat > "$fakebin/systemctl" <<SH
 #!/usr/bin/env bash
 case "\$*" in
+  'is-enabled ttyd.service') printf 'masked\n' ;;
+  'is-active ttyd.service') printf 'inactive\n' ;;
   '--user is-enabled big-red-codex-mobile.service') printf 'enabled\n' ;;
   '--user is-active big-red-codex-mobile.service') printf 'active\n' ;;
   *) printf 'systemctl=<%s>\n' "\$*" >> '$log' ;;
@@ -85,6 +87,7 @@ $INSTALLER >/dev/null
 cmp -s "$ROOT/scripts/big-red-codex-mobile" "$home/.local/bin/big-red-codex-mobile"
 cmp -s "$ROOT/systemd/big-red-codex-mobile.service" "$home/.config/systemd/user/big-red-codex-mobile.service"
 grep -q 'tailscale=<serve --bg --yes --https=8444 http://127.0.0.1:7681>' "$log"
+grep -q 'systemctl=<mask --now ttyd.service>' "$log"
 
 $INSTALLER --verify-only >/dev/null
 if BIG_RED_CODEX_MOBILE_TEST_PUBLIC_LISTENER=1 $INSTALLER --verify-only >/dev/null 2>&1; then

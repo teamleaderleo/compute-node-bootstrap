@@ -106,6 +106,12 @@ ensure_ttyd() {
   as_root apt-get install -y ttyd
 }
 
+disable_packaged_ttyd_service() {
+  # Ubuntu enables a generic ttyd login service during package installation.
+  # The reviewed user service is the only allowed owner of the browser terminal.
+  as_root systemctl mask --now ttyd.service
+}
+
 install_files() {
   as_operator install -d -m 0700 "$local_bin" "$unit_dir"
   as_operator install -m 0755 "$launcher_source" "$launcher_target"
@@ -175,6 +181,14 @@ verify_profiles() {
 verify() {
   require_tools
   command -v ttyd >/dev/null || { printf 'error: ttyd is not installed\n' >&2; return 1; }
+  [[ $(systemctl is-enabled ttyd.service 2>/dev/null || true) == masked ]] || {
+    printf 'error: the packaged system-wide ttyd service is not masked\n' >&2
+    return 1
+  }
+  [[ $(systemctl is-active ttyd.service 2>/dev/null || true) != active ]] || {
+    printf 'error: the packaged system-wide ttyd service is active\n' >&2
+    return 1
+  }
   as_operator /bin/test -d "$projects_root"
   as_operator cmp -s "$launcher_source" "$launcher_target" || {
     printf 'error: installed Codex mobile launcher does not match reviewed source\n' >&2
@@ -200,6 +214,7 @@ verify() {
 install_mobile() {
   print_plan
   ensure_ttyd
+  disable_packaged_ttyd_service
   install_files
   as_root loginctl enable-linger "$operator_user"
   as_operator systemctl --user daemon-reload

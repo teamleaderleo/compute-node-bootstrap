@@ -23,9 +23,10 @@ scripts/install-big-red-codex-mobile
 scripts/install-big-red-codex-mobile --verify-only
 ```
 
-The installer adds Ubuntu's `ttyd` package when absent, installs the reviewed
-launcher and user systemd unit, enables user lingering, and creates a persistent
-Tailscale Serve HTTPS mapping on port 8444. The terminal backend listens only
+The installer adds Ubuntu's `ttyd` package when absent, masks the package's
+generic system-wide login service, installs the reviewed launcher and user
+systemd unit, enables user lingering, and creates a persistent Tailscale Serve
+HTTPS mapping on port 8444. The terminal backend listens only
 on `127.0.0.1:7681`; no LAN or public listener and no Funnel route are created.
 Tailnet membership is the access boundary, matching the existing private
 Tailscale administration path. The endpoint does not ask for a second password.
@@ -56,4 +57,5 @@ To remove only this browser route without disturbing OpenCode Web on HTTPS 443:
 ```bash
 tailscale serve --https=8444 off
 systemctl --user disable --now big-red-codex-mobile.service
+sudo systemctl unmask ttyd.service
 ```
