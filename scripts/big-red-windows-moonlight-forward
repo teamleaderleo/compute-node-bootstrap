@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+mode=${1:-apply}
+guest_ip=${BIG_RED_WINDOWS_GUEST_IP:-192.168.122.252}
+tailnet_interface=${BIG_RED_WINDOWS_TAILNET_INTERFACE:-tailscale0}
+guest_bridge=${BIG_RED_WINDOWS_GUEST_BRIDGE:-virbr0}
+table_name=big_red_windows_moonlight
+
+usage() {
+  cat <<'USAGE'
+Usage: big-red-windows-moonlight-forward [apply|verify|remove|plan]
+
+Maintain a tailnet-interface-only nftables DNAT/SNAT route from Big Red's
+Tailscale address to Sunshine in the Windows guest. The Sunshine Web UI port
+47990 is intentionally excluded.
+USAGE
+}
+
+case "$mode" in
+  apply|verify|remove|plan) ;;
+  --help|-h) usage; exit 0 ;;
+  *) usage >&2; exit 2 ;;
+esac
+
+as_root() {
+  if ((EUID == 0)); then
+    "$@"
+  else
+    command -v sudo >/dev/null || {
+      printf 'error: sudo is required to manage the Moonlight forwarding table\n' >&2
+      return 1
+    }
+    sudo "$@"
+  fi
+}
+
+require_tools() {
+  local tool
+  for tool in grep ip nft sudo tailscale; do
+    command -v "$tool" >/dev/null || {
+      printf 'error: required host tool is missing: %s\n' "$tool" >&2
+      return 1
+    }
+  done
+}
+
+validate_inputs() {
+  [[ "$guest_ip" =~ ^192\.168\.122\.([0-9]{1,3})$ ]] || {
+    printf 'error: guest IP must be within Big Red libvirt subnet 192.168.122.0/24\n' >&2
+    return 1
+  }
+  ((BASH_REMATCH[1] >= 2 && BASH_REMATCH[1] <= 254)) || {
+    printf 'error: guest IP host octet is outside the libvirt DHCP range\n' >&2
+    return 1
+  }
+  [[ "$tailnet_interface" =~ ^[a-zA-Z0-9_.:-]+$ && "$guest_bridge" =~ ^[a-zA-Z0-9_.:-]+$ ]] || {
+    printf 'error: invalid interface name\n' >&2
+    return 1
+  }
+}
+
+host_ip() {
+  tailscale ip -4 | grep -m1 -E '^100\.[0-9]+\.[0-9]+\.[0-9]+$'
+}
+
+require_interfaces() {
+  ip link show dev "$tailnet_interface" >/dev/null
+  ip link show dev "$guest_bridge" >/dev/null
+}
+
+print_plan() {
+  local current_host_ip
+  current_host_ip=$(host_ip)
+  printf 'tailnet_interface=%s\n' "$tailnet_interface"
+  printf 'tailnet_ipv4=%s\n' "$current_host_ip"
+  printf 'guest_bridge=%s\n' "$guest_bridge"
+  printf 'guest_ipv4=%s\n' "$guest_ip"
+  printf 'forward_tcp=47984,47989,48010\n'
+  printf 'forward_udp=47998-48000\n'
+  printf 'sunshine_web_ui_47990=not_forwarded\n'
+  printf 'public_or_lan_listener=none\n'
+}
+
+apply_rules() {
+  local current_host_ip
+  current_host_ip=$(host_ip)
+  require_interfaces
+  if as_root nft list table ip "$table_name" >/dev/null 2>&1; then
+    as_root nft delete table ip "$table_name"
+  fi
+  as_root nft -f - <<EOF
+table ip $table_name {
+  chain prerouting {
+    type nat hook prerouting priority dstnat; policy accept;
+    iifname "$tailnet_interface" ip daddr $current_host_ip tcp dport { 47984, 47989, 48010 } counter dnat to $guest_ip
+    iifname "$tailnet_interface" ip daddr $current_host_ip udp dport 47998-48000 counter dnat to $guest_ip
+  }
+  chain postrouting {
+    type nat hook postrouting priority srcnat; policy accept;
+    ip saddr 100.64.0.0/10 ip daddr $guest_ip oifname "$guest_bridge" tcp dport { 47984, 47989, 48010 } counter snat to 192.168.122.1
+    ip saddr 100.64.0.0/10 ip daddr $guest_ip oifname "$guest_bridge" udp dport 47998-48000 counter snat to 192.168.122.1
+  }
+}
+EOF
+}
+
+verify_rules() {
+  local current_host_ip rules
+  current_host_ip=$(host_ip)
+  rules=$(as_root nft list table ip "$table_name") || {
+    printf 'error: Moonlight forwarding table is missing\n' >&2
+    return 1
+  }
+  grep -Fq "iifname \"$tailnet_interface\" ip daddr $current_host_ip tcp dport { 47984, 47989, 48010 }" <<<"$rules"
+  grep -Fq "iifname \"$tailnet_interface\" ip daddr $current_host_ip udp dport 47998-48000" <<<"$rules"
+  grep -Fq "ip saddr 100.64.0.0/10 ip daddr $guest_ip oifname \"$guest_bridge\" tcp dport { 47984, 47989, 48010 }" <<<"$rules"
+  grep -Fq "ip saddr 100.64.0.0/10 ip daddr $guest_ip oifname \"$guest_bridge\" udp dport 47998-48000" <<<"$rules"
+  if grep -Eq 'dport ([{][^}]*[ ,])?47990([ ,}]|$)' <<<"$rules"; then
+    printf 'error: Sunshine Web UI port 47990 must not be forwarded\n' >&2
+    return 1
+  fi
+  printf 'moonlight_forwarding=active\n'
+  printf 'sunshine_web_ui_47990=not_forwarded\n'
+  printf 'tailnet_front_door=%s\n' "$current_host_ip"
+}
+
+remove_rules() {
+  if as_root nft list table ip "$table_name" >/dev/null 2>&1; then
+    as_root nft delete table ip "$table_name"
+  fi
+  printf 'moonlight_forwarding=removed\n'
+}
+
+require_tools
+validate_inputs
+
+case "$mode" in
+  plan) print_plan ;;
+  apply) print_plan; apply_rules; verify_rules ;;
+  verify) require_interfaces; verify_rules ;;
+  remove) remove_rules ;;
+esac
