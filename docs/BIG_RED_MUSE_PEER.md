@@ -24,7 +24,9 @@ scripts/install-big-red-muse-peer
 scripts/install-big-red-muse-peer --verify-only
 ```
 
-The installer downloads OpenCode's official install script, prints its SHA-256 receipt, installs OpenCode into `~/.local/bin`, installs the reviewed `big-red-muse-peer` launcher, and verifies the CLI capabilities required by the wrapper. It never reads or writes OpenCode Zen credentials.
+The installer downloads OpenCode's official install script, prints its SHA-256 receipt, lets it install OpenCode in its supported `~/.opencode/bin` location, and links the verified executable into `~/.local/bin` without asking the upstream installer to edit shell startup files. It also installs the reviewed `big-red-muse-peer` launcher and verifies the CLI capabilities required by the wrapper. It never reads or writes OpenCode Zen credentials.
+
+The separate link keeps the stable Big Red launcher contract while allowing the upstream installer to manage OpenCode in its current default location.
 
 ## Authenticate OpenCode Zen
 
