@@ -12,9 +12,9 @@ scripts/install-big-red-opencode-web
 scripts/install-big-red-opencode-web --verify-only
 ```
 
-The installer creates a random OpenCode server password once at `~/.config/big-red-opencode-web/server-password`, with directory mode `0700` and file mode `0600`. The systemd user unit receives it through `LoadCredential` and exports it only to OpenCode as the supported `OPENCODE_SERVER_PASSWORD` value. The password is never printed by the installer.
+Tailnet membership is the browser access control. OpenCode does not present a second HTTP Basic Auth prompt, because that prompt is poorly retained by mobile Safari and creates needless repeated-login friction. The backend remains loopback-only, Tailscale Serve remains tailnet-only, and Funnel remains disabled.
 
-The username remains OpenCode's default, `opencode`. Retrieve the password only in an attended private Big Red terminal when adding it to a client password manager; do not put it in shell history, GitHub, or workspace prose.
+An older installation may retain `~/.config/big-red-opencode-web/server-password`. The current service does not read it. The installer deliberately leaves that private file untouched instead of printing, moving, or deleting it.
 
 ## Persistence and access
 
@@ -22,7 +22,7 @@ The username remains OpenCode's default, `opencode`. Retrieve the password only 
 
 `tailscale serve --bg` persists the HTTPS reverse proxy across tailscaled restarts and reboot. It does not enable Tailscale Funnel and does not open the OpenCode port on LAN or public interfaces.
 
-With Tailscale connected on a phone or tablet, open the HTTPS URL printed by `--plan` or `--verify-only`, authenticate as `opencode`, and choose a repository under `/home/leo/Projects`.
+With Tailscale connected on a phone or tablet, open the HTTPS URL printed by `--plan` or `--verify-only` and choose a repository under `/home/leo/Projects`. No additional browser login is required.
 
 ## Verify and operate
 
@@ -32,7 +32,7 @@ tailscale serve status
 scripts/install-big-red-opencode-web --verify-only
 ```
 
-The verifier checks the private credential shape, enabled/active service and lingering user manager, exact loopback socket, password-protected health API, canonical repository root, tailnet-only Serve mapping, disabled Funnel state, and exact Muse Contributor Free model availability.
+The verifier checks the enabled/active service and lingering user manager, exact loopback socket, login-free health API, canonical repository root, tailnet-only Serve mapping, disabled Funnel state, and exact Muse Contributor Free model availability.
 
 To disable the browser route intentionally:
 

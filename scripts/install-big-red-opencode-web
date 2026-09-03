@@ -15,7 +15,7 @@ usage() {
 Usage: install-big-red-opencode-web [--plan|--verify-only] [--operator-user USER]
 
 Install or verify the loopback-only OpenCode Web user service and its private
-Tailscale Serve HTTPS route. The script never prints the server password.
+Tailscale Serve HTTPS route. Tailnet membership is the browser access control.
 USAGE
 }
 
@@ -48,8 +48,6 @@ operator_home=$(cut -d: -f6 <<<"$passwd_row")
 local_bin="$operator_home/.local/bin"
 opencode="$local_bin/opencode"
 projects_root="$operator_home/Projects"
-credential_dir="$operator_home/.config/big-red-opencode-web"
-password_file="$credential_dir/server-password"
 unit_dir="$operator_home/.config/systemd/user"
 unit_target="$unit_dir/$unit_name"
 backend="http://127.0.0.1:$port"
@@ -106,57 +104,12 @@ print_plan() {
   printf 'opencode_launcher_relative=.local/bin/opencode\n'
   printf 'working_directory_relative=Projects\n'
   printf 'service_unit_relative=.config/systemd/user/%s\n' "$unit_name"
-  printf 'credential_relative=.config/big-red-opencode-web/server-password\n'
-  printf 'credential_mode=0600\n'
   printf 'local_bind=127.0.0.1:%s\n' "$port"
   printf 'tailscale_backend=%s\n' "$backend"
   printf 'tailscale_https_url=https://%s/\n' "$dns_name"
+  printf 'browser_auth=tailnet_only\n'
   printf 'muse_model=%s\n' "$muse_model"
   printf 'public_funnel=disabled\n'
-}
-
-ensure_password() {
-  as_operator install -d -m 0700 "$credential_dir"
-  as_operator chmod 0700 "$credential_dir"
-  as_operator python3 - "$password_file" <<'PY'
-import os
-import secrets
-import stat
-import sys
-
-path = sys.argv[1]
-created = False
-flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW
-try:
-    fd = os.open(path, flags)
-except FileNotFoundError:
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC | os.O_NOFOLLOW, 0o600)
-    try:
-        os.write(fd, (secrets.token_urlsafe(36) + "\n").encode("ascii"))
-        os.fsync(fd)
-    finally:
-        os.close(fd)
-    created = True
-    fd = os.open(path, flags)
-
-try:
-    metadata = os.fstat(fd)
-    value = os.read(fd, 256)
-finally:
-    os.close(fd)
-
-secret = value.rstrip(b"\n")
-if (
-    not stat.S_ISREG(metadata.st_mode)
-    or metadata.st_uid != os.getuid()
-    or metadata.st_nlink != 1
-    or stat.S_IMODE(metadata.st_mode) != 0o600
-    or not 32 <= len(secret) <= 128
-    or value not in (secret, secret + b"\n")
-):
-    raise SystemExit("OpenCode Web password file is not one private owner credential")
-print("server_password_status=" + ("created" if created else "preserved"))
-PY
 }
 
 install_unit() {
@@ -165,75 +118,27 @@ install_unit() {
   printf 'service_unit_sha256=%s\n' "$(sha256sum "$unit_source" | cut -d' ' -f1)"
 }
 
-authenticated_get() {
-  local url=$1
-  as_operator python3 - "$password_file" <<'PY' | \
-    as_operator curl --config - --silent --show-error --fail --max-time 10 "$url"
-import os
-import sys
-
-fd = os.open(sys.argv[1], os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
-try:
-    value = os.read(fd, 256).rstrip(b"\n").decode("ascii")
-finally:
-    os.close(fd)
-sys.stdout.write(f'user = "opencode:{value}"\n')
-PY
-}
-
-verify_password() {
-  as_operator python3 - "$password_file" <<'PY'
-import os
-import stat
-import sys
-
-fd = os.open(sys.argv[1], os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
-try:
-    metadata = os.fstat(fd)
-    value = os.read(fd, 256)
-finally:
-    os.close(fd)
-directory_fd = os.open(os.path.dirname(sys.argv[1]), os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_DIRECTORY)
-try:
-    directory = os.fstat(directory_fd)
-finally:
-    os.close(directory_fd)
-secret = value.rstrip(b"\n")
-assert stat.S_ISDIR(directory.st_mode)
-assert directory.st_uid == os.getuid()
-assert stat.S_IMODE(directory.st_mode) == 0o700
-assert stat.S_ISREG(metadata.st_mode)
-assert metadata.st_uid == os.getuid()
-assert metadata.st_nlink == 1
-assert stat.S_IMODE(metadata.st_mode) == 0o600
-assert 32 <= len(secret) <= 128
-assert value in (secret, secret + b"\n")
-print("server_password=configured")
-print("server_password_directory_mode=0700")
-print("server_password_mode=0600")
-PY
-}
-
 verify_http() {
-  local unauthenticated health path files
-  unauthenticated=$(as_operator curl --silent --output /dev/null --write-out '%{http_code}' --max-time 10 "$health_url")
-  [[ "$unauthenticated" == 401 ]] || {
-    printf 'error: unauthenticated OpenCode health request returned HTTP %s\n' "$unauthenticated" >&2
+  local status health path files
+  status=$(as_operator curl --silent --output /dev/null --write-out '%{http_code}' --max-time 10 "$health_url")
+  [[ "$status" == 200 ]] || {
+    printf 'error: login-free OpenCode health request returned HTTP %s\n' "$status" >&2
     return 1
   }
-  health=$(authenticated_get "$health_url")
+  health=$(as_operator curl --silent --show-error --fail --max-time 10 "$health_url")
   jq -e '.healthy == true and (.version | type == "string")' <<<"$health" >/dev/null
-  path=$(authenticated_get "$backend/path")
+  path=$(as_operator curl --silent --show-error --fail --max-time 10 "$backend/path")
   [[ $(jq -r '.directory // .worktree // empty' <<<"$path") == "$projects_root" ]] || {
     printf 'error: OpenCode Web is not rooted at the canonical Projects directory\n' >&2
     return 1
   }
-  files=$(authenticated_get "$backend/file?path=.")
+  files=$(as_operator curl --silent --show-error --fail --max-time 10 "$backend/file?path=.")
   jq -e 'any(.[]; .name == "compute-node-bootstrap") and any(.[]; .name == "leo-workspace")' <<<"$files" >/dev/null || {
     printf 'error: OpenCode Web cannot see the expected Big Red repositories\n' >&2
     return 1
   }
   printf 'opencode_web_health=healthy\n'
+  printf 'opencode_web_browser_auth=tailnet_only\n'
   printf 'opencode_web_projects=compute-node-bootstrap,leo-workspace\n'
 }
 
@@ -284,12 +189,12 @@ wait_for_web() {
   local _
   for _ in {1..40}; do
     if [[ $(as_operator systemctl --user is-active "$unit_name" 2>/dev/null || true) == active ]] && \
-      [[ $(as_operator curl --silent --output /dev/null --write-out '%{http_code}' --max-time 2 "$health_url" 2>/dev/null || true) == 401 ]]; then
+      [[ $(as_operator curl --silent --output /dev/null --write-out '%{http_code}' --max-time 2 "$health_url" 2>/dev/null || true) == 200 ]]; then
       return 0
     fi
     sleep 0.25
   done
-  printf 'error: OpenCode Web did not become password-protected and ready\n' >&2
+  printf 'error: OpenCode Web did not become login-free and ready\n' >&2
   return 1
 }
 
@@ -311,7 +216,6 @@ verify() {
   [[ $(as_operator systemctl --user is-enabled "$unit_name") == enabled ]]
   [[ $(as_operator systemctl --user is-active "$unit_name") == active ]]
   [[ $(loginctl show-user "$operator_user" -p Linger --value) == yes ]]
-  verify_password
   verify_listener
   verify_http
   verify_serve
@@ -323,7 +227,6 @@ verify() {
 
 install_web() {
   print_plan
-  ensure_password
   install_unit
   as_root loginctl enable-linger "$operator_user"
   as_operator systemctl --user daemon-reload

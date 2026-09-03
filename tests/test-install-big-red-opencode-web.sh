@@ -89,19 +89,19 @@ cat > "$fakebin/curl" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 configured=false
-config_line=
 url=
+write_code=false
 while (($#)); do
   case "$1" in
-    --config) configured=true; read -r config_line; shift 2 ;;
+    --write-out) write_code=true; shift 2 ;;
     http://*) url=$1; shift ;;
     *) shift ;;
   esac
 done
-if [[ "$configured" == false ]]; then
+if [[ ${BIG_RED_OPENCODE_WEB_TEST_AUTH_REQUIRED:-0} == 1 ]]; then
   printf '401'
-elif [[ "$config_line" != "user = \"opencode:$(tr -d '\n' < "$HOME/.config/big-red-opencode-web/server-password")\"" ]]; then
-  exit 3
+elif [[ "$write_code" == true ]]; then
+  printf '200'
 elif [[ "$url" == */global/health ]]; then
   printf '%s\n' '{"healthy":true,"version":"test"}'
 elif [[ "$url" == */path ]]; then
@@ -116,7 +116,10 @@ SH
 chmod +x "$fakebin"/*
 export PATH="$fakebin:$PATH"
 
-grep -q 'OPENCODE_SERVER_PASSWORD' "$UNIT"
+if grep -q 'OPENCODE_SERVER_PASSWORD\|LoadCredential' "$UNIT"; then
+  printf 'error: unit still enables browser Basic Auth\n' >&2
+  exit 1
+fi
 grep -q -- '--hostname 127.0.0.1 --port 4096' "$UNIT"
 if grep -q -- '--hostname 0.0.0.0' "$UNIT"; then
   printf 'error: unit exposes OpenCode Web beyond loopback\n' >&2
@@ -126,22 +129,24 @@ fi
 plan=$($INSTALLER --plan --operator-user "$user")
 grep -q '^local_bind=127.0.0.1:4096$' <<<"$plan"
 grep -q '^tailscale_https_url=https://big-red.example.ts.net/$' <<<"$plan"
-grep -q '^credential_mode=0600$' <<<"$plan"
+grep -q '^browser_auth=tailnet_only$' <<<"$plan"
 grep -q '^public_funnel=disabled$' <<<"$plan"
 
 $INSTALLER --operator-user "$user" > "$temporary/apply.out"
-grep -q '^server_password_status=created$' "$temporary/apply.out"
 grep -q '^user_service=enabled,active$' "$temporary/apply.out"
 grep -q '^tailscale_funnel=disabled$' "$temporary/apply.out"
 grep -q '^muse_model=opencode/muse-spark-1.3-contributor-free$' "$temporary/apply.out"
-[[ -s "$home/.config/big-red-opencode-web/server-password" ]]
-[[ $(stat -c '%a' "$home/.config/big-red-opencode-web/server-password") == 600 ]]
 [[ -f "$home/.config/systemd/user/big-red-opencode-web.service" ]]
 grep -q 'tailscale=<serve --bg --yes --https=443 http://127.0.0.1:4096>' "$log"
 
 $INSTALLER --verify-only --operator-user "$user" > "$temporary/verify.out"
-grep -q '^server_password=configured$' "$temporary/verify.out"
-grep -q '^server_password_directory_mode=0700$' "$temporary/verify.out"
+grep -q '^opencode_web_browser_auth=tailnet_only$' "$temporary/verify.out"
+if BIG_RED_OPENCODE_WEB_TEST_AUTH_REQUIRED=1 $INSTALLER --verify-only --operator-user "$user" \
+  > "$temporary/auth.out" 2>&1; then
+  printf 'error: verifier accepted an auth-challenged browser route\n' >&2
+  exit 1
+fi
+grep -q 'did not become login-free and ready' "$temporary/auth.out"
 if BIG_RED_OPENCODE_WEB_TEST_FUNNEL=1 $INSTALLER --verify-only --operator-user "$user" \
   > "$temporary/funnel.out" 2>&1; then
   printf 'error: verifier accepted a public Funnel configuration\n' >&2
@@ -166,13 +171,6 @@ if BIG_RED_OPENCODE_WEB_TEST_MODEL_LOOKALIKE=1 $INSTALLER --verify-only --operat
   exit 1
 fi
 
-chmod 0755 "$home/.config/big-red-opencode-web"
-if $INSTALLER --verify-only --operator-user "$user" > "$temporary/directory.out" 2>&1; then
-  printf 'error: verifier accepted a non-private credential directory\n' >&2
-  exit 1
-fi
-chmod 0700 "$home/.config/big-red-opencode-web"
-
 cp "$home/.config/systemd/user/big-red-opencode-web.service" "$temporary/unit.backup"
 printf '\n# mismatch\n' >> "$home/.config/systemd/user/big-red-opencode-web.service"
 if $INSTALLER --verify-only --operator-user "$user" > "$temporary/unit.out" 2>&1; then
@@ -180,27 +178,5 @@ if $INSTALLER --verify-only --operator-user "$user" > "$temporary/unit.out" 2>&1
   exit 1
 fi
 mv "$temporary/unit.backup" "$home/.config/systemd/user/big-red-opencode-web.service"
-
-cp "$home/.config/big-red-opencode-web/server-password" "$temporary/password.backup"
-{
-  printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-  for _ in {1..100}; do printf '\n'; done
-} > "$home/.config/big-red-opencode-web/server-password"
-chmod 0600 "$home/.config/big-red-opencode-web/server-password"
-if $INSTALLER --verify-only --operator-user "$user" > "$temporary/password-verify.out" 2>&1; then
-  printf 'error: verifier accepted malformed credential bytes\n' >&2
-  exit 1
-fi
-if $INSTALLER --operator-user "$user" > "$temporary/password-apply.out" 2>&1; then
-  printf 'error: installer preserved malformed credential bytes\n' >&2
-  exit 1
-fi
-mv "$temporary/password.backup" "$home/.config/big-red-opencode-web/server-password"
-
-if grep -Fq "$(tr -d '\n' < "$home/.config/big-red-opencode-web/server-password")" \
-  "$temporary/apply.out" "$temporary/verify.out" "$log"; then
-  printf 'error: OpenCode Web password leaked into test output\n' >&2
-  exit 1
-fi
 
 printf 'install_big_red_opencode_web_tests=passed\n'
