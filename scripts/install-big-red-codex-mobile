@@ -1,0 +1,216 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+mode=apply
+operator_user=${SUDO_USER:-$(id -un)}
+local_port=7681
+https_port=8444
+unit_name=big-red-codex-mobile.service
+script_root=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+launcher_source="$script_root/big-red-codex-mobile"
+unit_source="$script_root/../systemd/$unit_name"
+
+usage() {
+  cat <<'USAGE'
+Usage: install-big-red-codex-mobile [--plan|--verify-only] [--operator-user USER]
+
+Install or verify the loopback-only browser terminal that launches persistent
+Codex sessions with Muse X High, Muse High, or the existing Sol default.
+USAGE
+}
+
+while (($#)); do
+  case "$1" in
+    --plan) mode=plan; shift ;;
+    --verify-only) mode=verify; shift ;;
+    --operator-user)
+      [[ $# -ge 2 ]] || { usage >&2; exit 2; }
+      operator_user=$2
+      shift 2
+      ;;
+    --help|-h) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+  esac
+done
+
+passwd_row=$(getent passwd "$operator_user" || true)
+operator_uid=$(cut -d: -f3 <<<"$passwd_row")
+operator_home=$(cut -d: -f6 <<<"$passwd_row")
+[[ -n $operator_uid && -n $operator_home && -d $operator_home ]] || {
+  printf 'error: operator user %s has no existing home directory\n' "$operator_user" >&2
+  exit 1
+}
+[[ -f $launcher_source && ! -L $launcher_source && -f $unit_source && ! -L $unit_source ]] || {
+  printf 'error: reviewed Codex mobile sources are missing or invalid\n' >&2
+  exit 1
+}
+
+local_bin="$operator_home/.local/bin"
+launcher_target="$local_bin/big-red-codex-mobile"
+projects_root="$operator_home/Projects"
+unit_dir="$operator_home/.config/systemd/user"
+unit_target="$unit_dir/$unit_name"
+backend="http://127.0.0.1:$local_port"
+
+as_operator() {
+  local runtime="/run/user/$operator_uid"
+  if [[ $(id -un) == "$operator_user" ]]; then
+    env HOME="$operator_home" USER="$operator_user" LOGNAME="$operator_user" \
+      XDG_RUNTIME_DIR="$runtime" DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime/bus" \
+      PATH="$local_bin:$operator_home/.opencode/bin:${PATH:-/usr/local/bin:/usr/bin:/bin}" "$@"
+  else
+    sudo -u "$operator_user" env HOME="$operator_home" USER="$operator_user" LOGNAME="$operator_user" \
+      XDG_RUNTIME_DIR="$runtime" DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime/bus" \
+      PATH="$local_bin:$operator_home/.opencode/bin:${PATH:-/usr/local/bin:/usr/bin:/bin}" "$@"
+  fi
+}
+
+as_root() {
+  if ((EUID == 0)); then "$@"; else sudo "$@"; fi
+}
+
+require_tools() {
+  local tool
+  for tool in bash cmp curl cut getent git grep id install jq loginctl python3 sha256sum sleep ss systemctl tailscale tmux wc; do
+    command -v "$tool" >/dev/null || {
+      printf 'error: required host tool is missing: %s\n' "$tool" >&2
+      return 1
+    }
+  done
+}
+
+tailnet_dns_name() {
+  as_operator tailscale status --json | jq -er '.Self.DNSName | select(type == "string" and length > 1) | rtrimstr(".")'
+}
+
+print_plan() {
+  require_tools
+  local dns_name
+  dns_name=$(tailnet_dns_name)
+  printf 'operator_user=%s\n' "$operator_user"
+  printf 'launcher_relative=.local/bin/big-red-codex-mobile\n'
+  printf 'service_unit_relative=.config/systemd/user/%s\n' "$unit_name"
+  printf 'local_bind=127.0.0.1:%s\n' "$local_port"
+  printf 'tailscale_backend=%s\n' "$backend"
+  printf 'tailscale_https_url=https://%s:%s/\n' "$dns_name" "$https_port"
+  printf 'profiles=muse-xhigh,muse-high,sol-default\n'
+  printf 'public_funnel=disabled\n'
+}
+
+ensure_ttyd() {
+  if command -v ttyd >/dev/null; then return; fi
+  command -v apt-get >/dev/null || {
+    printf 'error: ttyd is missing and apt-get is unavailable\n' >&2
+    return 1
+  }
+  as_root apt-get install -y ttyd
+}
+
+install_files() {
+  as_operator install -d -m 0700 "$local_bin" "$unit_dir"
+  as_operator install -m 0755 "$launcher_source" "$launcher_target"
+  as_operator install -m 0644 "$unit_source" "$unit_target"
+  printf 'launcher_sha256=%s\n' "$(sha256sum "$launcher_source" | cut -d' ' -f1)"
+  printf 'service_unit_sha256=%s\n' "$(sha256sum "$unit_source" | cut -d' ' -f1)"
+}
+
+wait_for_web() {
+  local _
+  for _ in {1..40}; do
+    if [[ $(as_operator systemctl --user is-active "$unit_name" 2>/dev/null || true) == active ]] && \
+      as_operator curl --silent --fail --max-time 2 "$backend" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.25
+  done
+  printf 'error: Codex mobile terminal did not become ready\n' >&2
+  return 1
+}
+
+verify_listener() {
+  local listeners
+  listeners=$(ss -ltnH "sport = :$local_port")
+  [[ $(wc -l <<<"$listeners" | tr -d ' ') == 1 && $listeners == *"127.0.0.1:$local_port"* ]] || {
+    printf 'error: Codex mobile listener is not exactly loopback %s\n' "$local_port" >&2
+    return 1
+  }
+  [[ $listeners != *"0.0.0.0:$local_port"* && $listeners != *"[::]:$local_port"* ]] || {
+    printf 'error: Codex mobile created a non-loopback listener\n' >&2
+    return 1
+  }
+  printf 'codex_mobile_listener=127.0.0.1:%s\n' "$local_port"
+}
+
+verify_serve() {
+  local serve_json dns_name
+  serve_json=$(as_operator tailscale serve status --json)
+  dns_name=$(tailnet_dns_name)
+  python3 - "$backend" "$dns_name" "$https_port" "$serve_json" <<'PY'
+import json
+import sys
+
+backend, dns_name, https_port, raw = sys.argv[1:]
+serve = json.loads(raw)
+tcp = serve.get("TCP", {})
+web = serve.get("Web", {})
+handlers = web.get(f"{dns_name}:{https_port}", {}).get("Handlers", {})
+if tcp.get(https_port, {}).get("HTTPS") is not True:
+    raise SystemExit("Tailscale Serve does not terminate HTTPS on the Codex mobile port")
+if handlers != {"/": {"Proxy": backend}}:
+    raise SystemExit("Tailscale Serve does not map the Codex mobile port to the exact loopback backend")
+allow_funnel = serve.get("AllowFunnel", {})
+if isinstance(allow_funnel, dict) and any(value is True for value in allow_funnel.values()):
+    raise SystemExit("Tailscale Funnel must remain disabled")
+PY
+  printf 'tailscale_serve=active\n'
+  printf 'tailscale_funnel=disabled\n'
+  printf 'tailscale_https_url=https://%s:%s/\n' "$dns_name" "$https_port"
+}
+
+verify_profiles() {
+  as_operator "$operator_home/Projects/compute-node-bootstrap/scripts/install-big-red-codex-muse" --verify-only >/dev/null
+  printf 'codex_profiles=muse-xhigh,muse-high,sol-default\n'
+}
+
+verify() {
+  require_tools
+  command -v ttyd >/dev/null || { printf 'error: ttyd is not installed\n' >&2; return 1; }
+  as_operator /bin/test -d "$projects_root"
+  as_operator cmp -s "$launcher_source" "$launcher_target" || {
+    printf 'error: installed Codex mobile launcher does not match reviewed source\n' >&2
+    return 1
+  }
+  as_operator cmp -s "$unit_source" "$unit_target" || {
+    printf 'error: installed Codex mobile unit does not match reviewed source\n' >&2
+    return 1
+  }
+  wait_for_web
+  [[ $(as_operator systemctl --user is-enabled "$unit_name") == enabled ]]
+  [[ $(as_operator systemctl --user is-active "$unit_name") == active ]]
+  [[ $(loginctl show-user "$operator_user" -p Linger --value) == yes ]]
+  as_operator curl --silent --fail --max-time 10 "$backend" | grep -qi ttyd
+  verify_listener
+  verify_serve
+  verify_profiles
+  printf 'user_service=enabled,active\n'
+  printf 'user_linger=enabled\n'
+  printf 'browser_terminal=healthy\n'
+}
+
+install_mobile() {
+  print_plan
+  ensure_ttyd
+  install_files
+  as_root loginctl enable-linger "$operator_user"
+  as_operator systemctl --user daemon-reload
+  as_operator systemctl --user enable "$unit_name"
+  as_operator systemctl --user restart "$unit_name"
+  as_operator tailscale serve --bg --yes --https="$https_port" "$backend"
+  verify
+}
+
+case "$mode" in
+  plan) print_plan ;;
+  verify) verify ;;
+  apply) install_mobile ;;
+esac
