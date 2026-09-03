@@ -1,0 +1,198 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+mode=apply
+operator_user=${SUDO_USER:-leo}
+opencode_installer_url=https://opencode.ai/install
+script_root=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+muse_source="$script_root/big-red-muse-peer"
+muse_model='opencode/muse-spark-1.3-contributor-free'
+install_temporary=
+
+usage() {
+  cat <<'USAGE'
+Usage: install-big-red-muse-peer [--plan|--verify-only] [--operator-user USER]
+
+Install or verify the official user-scoped OpenCode CLI and the reviewed Big Red
+Muse peer launcher. This script never authenticates OpenCode Zen and never reads
+its credential store.
+USAGE
+}
+
+while (($#)); do
+  case "$1" in
+    --plan) mode=plan; shift ;;
+    --verify-only) mode=verify; shift ;;
+    --operator-user)
+      [[ $# -ge 2 ]] || { usage >&2; exit 2; }
+      operator_user=$2
+      shift 2
+      ;;
+    --help|-h) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+  esac
+done
+
+operator_home=$(getent passwd "$operator_user" | cut -d: -f6 || true)
+[[ -n "$operator_home" && -d "$operator_home" ]] || {
+  printf 'error: operator user %s has no existing home directory\n' "$operator_user" >&2
+  exit 1
+}
+[[ -f "$muse_source" && ! -L "$muse_source" ]] || {
+  printf 'error: Muse launcher source is missing or invalid: %s\n' "$muse_source" >&2
+  exit 1
+}
+
+local_bin="$operator_home/.local/bin"
+opencode="$local_bin/opencode"
+muse_launcher="$local_bin/big-red-muse-peer"
+cache_root="$operator_home/.cache"
+
+as_operator() {
+  if [[ $(id -un) == "$operator_user" ]]; then
+    env HOME="$operator_home" USER="$operator_user" LOGNAME="$operator_user" \
+      PATH="$local_bin:${PATH:-/usr/local/bin:/usr/bin:/bin}" "$@"
+  else
+    command -v sudo >/dev/null || {
+      printf 'error: sudo is required to act as operator user %s\n' "$operator_user" >&2
+      return 1
+    }
+    sudo -u "$operator_user" env HOME="$operator_home" USER="$operator_user" LOGNAME="$operator_user" \
+      PATH="$local_bin:${PATH:-/usr/local/bin:/usr/bin:/bin}" "$@"
+  fi
+}
+
+require_tools() {
+  local tool
+  for tool in bash curl sha256sum mktemp getent readlink head awk grep install stat python3; do
+    command -v "$tool" >/dev/null || {
+      printf 'error: required host tool is missing: %s\n' "$tool" >&2
+      return 1
+    }
+  done
+}
+
+print_plan() {
+  require_tools
+  printf 'operator_user=%s\n' "$operator_user"
+  printf 'opencode_installer=%s\n' "$opencode_installer_url"
+  printf 'opencode_launcher_relative=.local/bin/opencode\n'
+  printf 'opencode_install_dir_relative=.local/bin\n'
+  printf 'muse_model=%s\n' "$muse_model"
+  printf 'muse_launcher_relative=.local/bin/big-red-muse-peer\n'
+  printf 'muse_launcher_sha256=%s\n' "$(sha256sum "$muse_source" | awk '{print $1}')"
+  printf 'muse_usage_ledger_relative=.local/state/big-red-muse-peer/usage.jsonl\n'
+  printf 'delegated_agent_mode=full_unattended\n'
+  printf 'provider_authentication=separate_interactive_step\n'
+  printf 'credential_files_read=none\n'
+}
+
+verify_launcher() {
+  local label=$1 launcher=$2
+  [[ -e "$launcher" || -L "$launcher" ]] || {
+    printf 'error: %s launcher is missing: %s\n' "$label" "$launcher" >&2
+    return 1
+  }
+  local resolved
+  resolved=$(readlink -f "$launcher")
+  [[ -n "$resolved" && -f "$resolved" && -x "$resolved" ]] || {
+    printf 'error: %s launcher does not resolve to an executable regular file\n' "$label" >&2
+    return 1
+  }
+  case "$resolved" in
+    "$operator_home"/*) ;;
+    *) printf 'error: %s launcher escapes the operator home: %s\n' "$label" "$resolved" >&2; return 1 ;;
+  esac
+}
+
+verify_muse_launcher() {
+  [[ -f "$muse_launcher" && ! -L "$muse_launcher" && -x "$muse_launcher" ]] || {
+    printf 'error: managed Muse launcher is missing or invalid\n' >&2
+    return 1
+  }
+  local installed_sha source_sha
+  installed_sha=$(sha256sum "$muse_launcher" | awk '{print $1}')
+  source_sha=$(sha256sum "$muse_source" | awk '{print $1}')
+  [[ "$installed_sha" == "$source_sha" ]] || {
+    printf 'error: managed Muse launcher does not match the reviewed checkout\n' >&2
+    return 1
+  }
+  printf 'muse_launcher_sha256=%s\n' "$installed_sha"
+}
+
+verify() {
+  require_tools
+  verify_launcher OpenCode "$opencode"
+  verify_muse_launcher
+
+  local version run_help auth_help
+  version=$(as_operator "$opencode" --version | head -c 500)
+  [[ -n "$version" ]] || {
+    printf 'error: OpenCode returned an empty version\n' >&2
+    return 1
+  }
+  run_help=$(as_operator "$opencode" run --help 2>&1)
+  for flag in --model --agent --format --dir; do
+    grep -q -- "$flag" <<<"$run_help" || {
+      printf 'error: installed OpenCode lacks required %s support\n' "$flag" >&2
+      return 1
+    }
+  done
+  if ! grep -q -- '--auto' <<<"$run_help" && ! grep -q -- '--dangerously-skip-permissions' <<<"$run_help"; then
+    printf 'error: installed OpenCode lacks an unattended-permission flag\n' >&2
+    return 1
+  fi
+  auth_help=$(as_operator "$opencode" auth login --help 2>&1)
+  grep -q -- '--provider' <<<"$auth_help" || {
+    printf 'error: installed OpenCode lacks provider-selectable auth login\n' >&2
+    return 1
+  }
+
+  printf 'opencode_install=verified\n'
+  printf 'opencode_version=%s\n' "$version"
+  printf 'muse_model=%s\n' "$muse_model"
+  printf 'muse_full_delegate=available\n'
+  printf 'authentication_status=not_inspected\n'
+}
+
+install_muse_launcher() {
+  if [[ -e "$muse_launcher" || -L "$muse_launcher" ]]; then
+    [[ -f "$muse_launcher" && ! -L "$muse_launcher" ]] || {
+      printf 'error: refusing to replace unexpected Muse launcher object: %s\n' "$muse_launcher" >&2
+      return 1
+    }
+  fi
+  as_operator install -m 0755 "$muse_source" "$muse_launcher"
+}
+
+cleanup_install_temporary() {
+  if [[ -n "${install_temporary:-}" ]]; then
+    as_operator rm -rf "$install_temporary"
+    install_temporary=
+  fi
+}
+
+install_peer() {
+  local opencode_installer
+  print_plan
+  as_operator mkdir -p "$cache_root" "$local_bin"
+  install_temporary=$(as_operator mktemp -d "$cache_root/big-red-muse-peer-install.XXXXXX")
+  opencode_installer="$install_temporary/opencode-install.sh"
+  trap cleanup_install_temporary EXIT
+
+  as_operator curl --fail --location --silent --show-error --proto '=https' --tlsv1.2 \
+    --connect-timeout 15 --max-time 120 --output "$opencode_installer" "$opencode_installer_url"
+  printf 'opencode_installer_sha256=%s\n' "$(as_operator sha256sum "$opencode_installer" | awk '{print $1}')"
+
+  as_operator env XDG_BIN_DIR="$local_bin" bash "$opencode_installer"
+  install_muse_launcher
+  verify
+  cleanup_install_temporary
+  trap - EXIT
+}
+
+case "$mode" in
+  plan) print_plan ;;
+  verify) verify ;;
+  apply) install_peer ;;
+esac
