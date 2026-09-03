@@ -45,6 +45,7 @@ operator_home=$(getent passwd "$operator_user" | cut -d: -f6 || true)
 
 local_bin="$operator_home/.local/bin"
 opencode="$local_bin/opencode"
+opencode_upstream="$operator_home/.opencode/bin/opencode"
 muse_launcher="$local_bin/big-red-muse-peer"
 cache_root="$operator_home/.cache"
 
@@ -64,7 +65,7 @@ as_operator() {
 
 require_tools() {
   local tool
-  for tool in bash curl sha256sum mktemp getent readlink head awk grep install stat python3; do
+  for tool in bash curl sha256sum mktemp getent readlink head awk grep install stat python3 ln; do
     command -v "$tool" >/dev/null || {
       printf 'error: required host tool is missing: %s\n' "$tool" >&2
       return 1
@@ -77,7 +78,8 @@ print_plan() {
   printf 'operator_user=%s\n' "$operator_user"
   printf 'opencode_installer=%s\n' "$opencode_installer_url"
   printf 'opencode_launcher_relative=.local/bin/opencode\n'
-  printf 'opencode_install_dir_relative=.local/bin\n'
+  printf 'opencode_upstream_relative=.opencode/bin/opencode\n'
+  printf 'opencode_install_dir_relative=.opencode/bin\n'
   printf 'muse_model=%s\n' "$muse_model"
   printf 'muse_launcher_relative=.local/bin/big-red-muse-peer\n'
   printf 'muse_launcher_sha256=%s\n' "$(sha256sum "$muse_source" | awk '{print $1}')"
@@ -103,6 +105,16 @@ verify_launcher() {
     "$operator_home"/*) ;;
     *) printf 'error: %s launcher escapes the operator home: %s\n' "$label" "$resolved" >&2; return 1 ;;
   esac
+}
+
+install_opencode_launcher() {
+  if [[ -e "$opencode" || -L "$opencode" ]]; then
+    return
+  fi
+  verify_launcher 'OpenCode upstream' "$opencode_upstream"
+  as_operator ln -s "$opencode_upstream" "$opencode"
+  verify_launcher OpenCode "$opencode"
+  printf 'opencode_launcher_link=%s\n' "$opencode_upstream"
 }
 
 verify_muse_launcher() {
@@ -184,7 +196,8 @@ install_peer() {
     --connect-timeout 15 --max-time 120 --output "$opencode_installer" "$opencode_installer_url"
   printf 'opencode_installer_sha256=%s\n' "$(as_operator sha256sum "$opencode_installer" | awk '{print $1}')"
 
-  as_operator env XDG_BIN_DIR="$local_bin" bash "$opencode_installer"
+  as_operator bash "$opencode_installer" --no-modify-path
+  install_opencode_launcher
   install_muse_launcher
   verify
   cleanup_install_temporary
