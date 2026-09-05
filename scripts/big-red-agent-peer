@@ -30,6 +30,7 @@ local_bin="$home/.local/bin"
 claude="$local_bin/claude"
 antigravity="$local_bin/agy"
 run_timeout=${BIG_RED_AGENT_TIMEOUT:-90m}
+run_kill_after=${BIG_RED_AGENT_KILL_AFTER:-30s}
 claude_model=${BIG_RED_CLAUDE_MODEL:-claude-opus-5}
 claude_effort=${BIG_RED_CLAUDE_EFFORT:-high}
 antigravity_model=${BIG_RED_ANTIGRAVITY_MODEL:-gemini-3.7-flash-high}
@@ -421,7 +422,7 @@ run_claude() {
   local selected_mode=$1 prompt=$2
   require_provider Claude "$claude"
   run_accounted claude "$claude_model" "$claude_effort" "$selected_mode" \
-    /usr/bin/timeout --foreground "$run_timeout" \
+    /usr/bin/timeout --foreground -k "$run_kill_after" "$run_timeout" \
     "$claude" \
       --model "$claude_model" \
       --effort "$claude_effort" \
@@ -434,7 +435,7 @@ run_antigravity() {
   local selected_mode=$1 prompt=$2
   require_provider Antigravity "$antigravity"
   run_accounted antigravity "$antigravity_model" "$antigravity_effort" "$selected_mode" \
-    /usr/bin/timeout --foreground "$run_timeout" \
+    /usr/bin/timeout --foreground -k "$run_kill_after" "$run_timeout" \
     "$antigravity" \
       -p "$prompt" \
       --model "$antigravity_model" \
