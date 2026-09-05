@@ -11,6 +11,7 @@ Big Red can use OpenCode with OpenCode Zen's `Muse Spark 1.3 Contributor Free` e
 - Agent: OpenCode `build`
 - Permissions: unattended/full local tool use (`--auto`, with compatibility fallback to the older `--dangerously-skip-permissions` spelling)
 - Run output: OpenCode JSON events are captured privately; only assistant text is returned to the caller
+- Timeout: `BIG_RED_AGENT_TIMEOUT` defaults to `90m`; TERM is followed by KILL after `BIG_RED_AGENT_KILL_AFTER` (default `30s`). Forced KILL returns 137, retained in the receipt. This bounds the direct provider process, not all descendants.
 - Usage accounting: content-free receipts at `~/.local/state/big-red-muse-peer/usage.jsonl`
 
 The launcher pins the explicit `opencode/...` model route so configured Anthropic, Google, or OpenAI credentials do not silently become the model backend.

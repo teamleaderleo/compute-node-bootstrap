@@ -200,4 +200,8 @@ if (cd "$temporary/outside" && "$PEER" run claude -- 'nope') >"$temporary/out" 2
 fi
 grep -q 'must start inside a Git worktree' "$temporary/err"
 
+# Exercise the distinct Muse, Claude and Antigravity deadline paths as part of
+# the existing peer verification entrypoint.
+bash "$ROOT/tests/test-big-red-timeout-reliability.sh"
+
 printf 'big_red_agent_peer_tests=passed\n'

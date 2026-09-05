@@ -111,7 +111,9 @@ The default invocation includes:
 
 Normal Antigravity settings/plugins/skills/MCP configuration under the user's ordinary HOME remain available. `BIG_RED_ANTIGRAVITY_MODEL` and `BIG_RED_ANTIGRAVITY_EFFORT` remain explicit overrides, but orchestration should normally leave them at Gemini 3.7 Flash/high.
 
-Both providers have an outer default timeout of 90 minutes, configurable through `BIG_RED_AGENT_TIMEOUT`.
+Both providers have an outer default timeout of 90 minutes, configurable through `BIG_RED_AGENT_TIMEOUT`. After TERM, `BIG_RED_AGENT_KILL_AFTER` (default `30s`) bounds the grace period before KILL. A forced KILL returns exit 137 and is retained in the usage receipt; ordinary timeout termination returns 124. This bounds the direct provider process; `--foreground` does not promise descendant cleanup.
+
+Run `bash tests/test-big-red-agent-peer.sh` for peer checks, including all three providers ignoring TERM, or `bash tests/test-big-red-timeout-reliability.sh` for that focused regression.
 
 ## Usage accounting
 
