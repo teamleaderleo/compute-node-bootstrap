@@ -25,7 +25,8 @@ home=${HOME:?HOME is required}
 local_bin="$home/.local/bin"
 opencode="$local_bin/opencode"
 run_timeout=${BIG_RED_AGENT_TIMEOUT:-90m}
-muse_model=${BIG_RED_MUSE_MODEL:-opencode/muse-spark-1.3-contributor-free}
+pinned_muse_model=opencode/muse-spark-1.3-contributor-free
+muse_model=${BIG_RED_MUSE_MODEL:-$pinned_muse_model}
 usage_root="$home/.local/state/big-red-muse-peer"
 usage_ledger="$usage_root/usage.jsonl"
 max_usage_ledger_bytes=$((64 * 1024 * 1024))
@@ -323,6 +324,11 @@ case "$mode" in
   auth|review|work|run) ;;
   *) usage >&2; exit 2 ;;
 esac
+
+if [[ "$muse_model" != "$pinned_muse_model" ]]; then
+  printf 'error: BIG_RED_MUSE_MODEL must be %s (got %s)\n' "$pinned_muse_model" "$muse_model" >&2
+  exit 2
+fi
 
 require_opencode
 

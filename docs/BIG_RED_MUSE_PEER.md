@@ -5,6 +5,7 @@ Big Red can use OpenCode with OpenCode Zen's `Muse Spark 1.3 Contributor Free` e
 ## Current contract
 
 - OpenCode model: `opencode/muse-spark-1.3-contributor-free`
+- Model override: `BIG_RED_MUSE_MODEL` may only be unset or the exact pinned value; any other value is rejected before OpenCode is invoked
 - Billing class: Contributor Free while OpenCode lists the model as free
 - Data contract: prompts and completions may be used to train future Meta models
 - Agent: OpenCode `build`
