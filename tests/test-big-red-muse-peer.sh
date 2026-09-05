@@ -100,4 +100,18 @@ if (cd "$temporary/outside" && "$PEER" run -- 'nope') >"$temporary/out" 2>"$temp
 fi
 grep -q 'must start inside a Git worktree' "$temporary/err"
 
+rm -f "$log.run"
+if BIG_RED_MUSE_MODEL='opencode/some-other-paid-model' "$PEER" run -- 'paid override' >"$temporary/out" 2>"$temporary/err"; then
+  printf 'error: Muse runner accepted a non-pinned BIG_RED_MUSE_MODEL\n' >&2
+  exit 1
+fi
+grep -q 'BIG_RED_MUSE_MODEL must be opencode/muse-spark-1.3-contributor-free' "$temporary/err"
+[[ ! -e "$log.run" ]]
+
+identical=$(cd "$project" && BIG_RED_MUSE_MODEL='opencode/muse-spark-1.3-contributor-free' "$PEER" run -- 'pinned override')
+grep -q 'fake Muse result' <<<"$identical"
+grep -q '<--model><opencode/muse-spark-1.3-contributor-free>' "$log.run"
+
+BIG_RED_MUSE_MODEL='opencode/some-other-paid-model' "$PEER" usage 168 >/dev/null
+
 printf 'big_red_muse_peer_tests=passed\n'
