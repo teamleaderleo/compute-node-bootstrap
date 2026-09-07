@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+repo_root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 test_root=$(mktemp -d)
 trap 'rm -rf "${test_root}"' EXIT
 
@@ -10,6 +10,7 @@ printf '%s\n' psys > "${test_root}/sys/devices/virtual/powercap/psys/name"
 printf '%s\n' 1 > "${test_root}/sys/devices/virtual/powercap/psys/energy_uj"
 printf '%s\n' core > "${test_root}/sys/devices/virtual/powercap/core/name"
 printf '%s\n' 1 > "${test_root}/sys/devices/virtual/powercap/core/energy_uj"
+# shellcheck disable=SC2016 -- the fake helper must expand these at invocation time.
 printf '%s\n' '#!/bin/sh' 'printf '\''%s\n'\'' "$*" >> "${POWER_CAP_TEST_LOG}"' > "${test_root}/setfacl"
 chmod 0755 "${test_root}/setfacl"
 
