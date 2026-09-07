@@ -1,0 +1,11 @@
+[Unit]
+Description=Check Big Red's physical panel idle timeout
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=10s
+Unit=big-red-panel-idle-blank.service
+
+[Install]
+WantedBy=timers.target

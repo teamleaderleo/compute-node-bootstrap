@@ -1,0 +1,9 @@
+[Unit]
+Description=Blank Big Red's physical panel after ten idle minutes
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/big-red-panel-idle-blank
+Nice=19
+IOSchedulingClass=idle
