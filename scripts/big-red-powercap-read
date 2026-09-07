@@ -1,0 +1,39 @@
+#!/usr/bin/python3
+"""Emit only named RAPL energy counters needed by Scrapbook."""
+import json
+import os
+import sys
+from pathlib import Path
+
+
+def main() -> int:
+    if len(sys.argv) != 1:
+        return 2
+    root = Path("/sys/class/powercap")
+    if os.geteuid() != 0 and os.environ.get("POWER_CAP_SYSFS_ROOT"):
+        root = Path(os.environ["POWER_CAP_SYSFS_ROOT"])
+    domains = []
+    seen = set()
+    try:
+        entries = list(root.iterdir())
+    except OSError:
+        entries = []
+    for entry in entries:
+        try:
+            name = (entry / "name").read_text().strip()
+            if name not in {"psys", "package-0"} or name in seen:
+                continue
+            energy = int((entry / "energy_uj").read_text())
+            maximum = int((entry / "max_energy_range_uj").read_text())
+            if not 0 <= energy < maximum or maximum <= 0:
+                continue
+        except (OSError, ValueError):
+            continue
+        domains.append({"name": name, "energy_uj": energy, "max_energy_range_uj": maximum})
+        seen.add(name)
+    json.dump(domains, sys.stdout, separators=(",", ":"), sort_keys=True)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

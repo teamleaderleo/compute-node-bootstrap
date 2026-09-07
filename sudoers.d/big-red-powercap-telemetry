@@ -1,0 +1,1 @@
+leo ALL=(root) NOPASSWD: /usr/local/sbin/big-red-powercap-read
