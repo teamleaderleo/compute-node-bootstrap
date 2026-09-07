@@ -1,0 +1,1 @@
+ACTION=="add", SUBSYSTEM=="powercap", RUN+="/usr/local/sbin/big-red-powercap-access %p leo"
