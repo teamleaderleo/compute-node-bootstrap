@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+
+script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+
+sudo install -o root -g root -m 0755 "${script_dir}/big-red-powercap-access" /usr/local/sbin/big-red-powercap-access
+sudo install -o root -g root -m 0644 "${script_dir}/../udev/90-big-red-powercap-telemetry.rules" /etc/udev/rules.d/90-big-red-powercap-telemetry.rules
+sudo udevadm control --reload-rules
+
+for name_file in /sys/class/powercap/*/name; do
+  [ -r "${name_file}" ] || continue
+  device_path=$(udevadm info -q path "$(dirname "${name_file}")")
+  sudo /usr/local/sbin/big-red-powercap-access "${device_path}" leo
+done
