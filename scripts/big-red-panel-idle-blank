@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# GNOME normally blanks the panel after org.gnome.desktop.session idle-delay.
+# This bounded fallback covers sessions where gsd-power stops acting on that
+# timeout. It observes Mutter's own idle clock and never synthesizes input.
+idle_threshold_ms=600000
+idle_monitor_bus=org.gnome.Mutter.IdleMonitor
+idle_monitor_path=/org/gnome/Mutter/IdleMonitor/Core
+idle_monitor_interface=org.gnome.Mutter.IdleMonitor
+display_bus=org.gnome.Mutter.DisplayConfig
+display_path=/org/gnome/Mutter/DisplayConfig
+display_interface=org.gnome.Mutter.DisplayConfig
+session_bus=org.gnome.SessionManager
+session_path=/org/gnome/SessionManager
+
+command -v gdbus >/dev/null 2>&1 || exit 0
+
+gdbus_call() {
+  gdbus call --session "$@" 2>/dev/null
+}
+
+extract_last_unsigned_integer() {
+  local value=$1
+  grep -Eo '[0-9]+' <<<"${value}" | tail -n 1
+}
+
+# Respect screen-idle inhibitors such as full-screen playback. A missing
+# session manager is treated as unavailable rather than permission to blank.
+inhibited=$(gdbus_call \
+  --dest "${session_bus}" \
+  --object-path "${session_path}" \
+  --method org.gnome.SessionManager.IsInhibited 8) || exit 0
+[[ ${inhibited} == *false* ]] || exit 0
+
+idle_reply=$(gdbus_call \
+  --dest "${idle_monitor_bus}" \
+  --object-path "${idle_monitor_path}" \
+  --method "${idle_monitor_interface}.GetIdletime") || exit 0
+idle_ms=$(extract_last_unsigned_integer "${idle_reply}") || exit 0
+[[ ${idle_ms} =~ ^[0-9]+$ ]] || exit 0
+(( idle_ms >= idle_threshold_ms )) || exit 0
+
+power_reply=$(gdbus_call \
+  --dest "${display_bus}" \
+  --object-path "${display_path}" \
+  --method org.freedesktop.DBus.Properties.Get \
+  "${display_interface}" PowerSaveMode) || exit 0
+power_mode=$(extract_last_unsigned_integer "${power_reply}") || exit 0
+[[ ${power_mode} =~ ^[0-9]+$ ]] || exit 0
+
+# 0 is on and 3 is off. Do not repeatedly write an already blank panel.
+(( power_mode == 0 )) || exit 0
+gdbus_call \
+  --dest "${display_bus}" \
+  --object-path "${display_path}" \
+  --method org.freedesktop.DBus.Properties.Set \
+  "${display_interface}" PowerSaveMode '<3>' >/dev/null || exit 0

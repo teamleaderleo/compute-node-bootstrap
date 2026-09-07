@@ -19,6 +19,7 @@ apt install -y \
   ethtool \
   networkd-dispatcher \
   intel-media-va-driver-non-free \
+  libglib2.0-bin \
   vainfo
 
 systemctl enable --now apt-daily.timer apt-daily-upgrade.timer unattended-upgrades.service
@@ -85,6 +86,7 @@ fi
 
 printf '\n== Make the GNOME desktop predictable after every login ==\n'
 install -o root -g root -m 0755 "${script_dir}/big-red-session-settings" /usr/local/sbin/big-red-session-settings
+SUDO_USER="${operator_user}" "${script_dir}/install-big-red-panel-idle-blank"
 
 install -d -m 0755 -o "${operator_user}" -g "${operator_user}" "/home/${operator_user}/.config/autostart"
 cat >"/home/${operator_user}/.config/autostart/big-red-session-settings.desktop" <<'EOF'
