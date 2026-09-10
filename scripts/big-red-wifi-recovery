@@ -22,9 +22,11 @@ import subprocess
 import sys
 
 WIFI = 'wlp0s20f3'
-# Addresses on these do not mean the host is reachable: libvirt's own bridge and
-# the VM's tap device exist even when the uplink is dead.
-VIRTUAL = re.compile(r'^(virbr|vnet|docker|br-|veth|lo)')
+# Addresses on these do not mean the host is reachable. libvirt's bridge and the
+# VM's tap exist even when the uplink is dead, and tailscale0 is an overlay: it
+# keeps its 100.x address after the transport underneath it has gone, which is
+# exactly the state this recovery has to notice.
+VIRTUAL = re.compile(r'^(virbr|vnet|docker|br-|veth|tailscale|tun|lo)')
 GIVING_UP = 'supplicant interface keeps failing, giving up'
 
 

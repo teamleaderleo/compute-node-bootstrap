@@ -21,6 +21,10 @@ HEALTHY_ADDRS = ('1: lo    inet 127.0.0.1/8 scope host lo\n'
 # the VM's tap were up, the uplink was not.
 OUTAGE_ADDRS = ('4: virbr0    inet 192.168.122.1/24 scope global virbr0\n'
                 '7: vnet0    inet 192.168.122.1/24 scope global vnet0')
+# Wi-Fi dies while Tailscale is already up: the overlay keeps its address even
+# though nothing can reach the host through it.
+STALE_OVERLAY_ADDRS = ('4: virbr0    inet 192.168.122.1/24 scope global virbr0\n'
+                       '5: tailscale0    inet 100.105.182.87/32 scope global tailscale0')
 
 
 def completed(rc=0, out='', err=''):
@@ -61,6 +65,13 @@ class DiagnosisTest(unittest.TestCase):
     def test_libvirt_addresses_do_not_count_as_reachable(self):
         # The exact trap from the outage: virbr0 and vnet0 were up throughout.
         run = Answers(addrs=OUTAGE_ADDRS)
+        should, _ = recovery.diagnose(run)
+        self.assertTrue(should)
+
+    def test_a_stale_tailscale_address_does_not_look_like_reachability(self):
+        # tailscale0 outlives the uplink. Counting it would disable the recovery
+        # in precisely the case it exists for.
+        run = Answers(addrs=STALE_OVERLAY_ADDRS)
         should, _ = recovery.diagnose(run)
         self.assertTrue(should)
 
