@@ -35,6 +35,8 @@ files=(
   "$repo/scripts/big-red-windows-mode-start:/usr/local/sbin/big-red-windows-mode-start:0755"
   "$repo/scripts/big-red-handover-observe:/usr/local/bin/big-red-handover-observe:0755"
   "$repo/systemd/big-red-windows-mode.service:/etc/systemd/system/big-red-windows-mode.service:0644"
+  "$repo/scripts/big-red-wait-for-tailnet:/usr/local/sbin/big-red-wait-for-tailnet:0755"
+  "$repo/systemd/big-red-windows-moonlight-forward.service.d/wait-for-tailnet.conf:/etc/systemd/system/big-red-windows-moonlight-forward.service.d/wait-for-tailnet.conf:0644"
 )
 
 fail() { echo "$*" >&2; exit 1; }
@@ -72,6 +74,12 @@ verify_result() {
   fi
   if grep -qE '^[[:space:]]*force_drivers' /etc/dracut.conf.d/90-preflight-arc-vfio.conf; then
     fail "dracut still force-loads vfio_pci on every boot."
+  fi
+
+  local dropin=/etc/systemd/system/big-red-windows-moonlight-forward.service.d/wait-for-tailnet.conf
+  if [[ -e /etc/systemd/system/big-red-windows-moonlight-forward.service ]]; then
+    sudo -n test -e "$dropin" ||
+      fail "Sunshine forwarding has no wait-for-tailnet drop-in; it will lose the boot race."
   fi
 
   [[ -d $crash_evidence ]] || fail "Crash evidence $crash_evidence is gone."

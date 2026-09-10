@@ -42,6 +42,8 @@ persistent Windows state to forget to undo.
 | `scripts/big-red-windows-mode-start` | `/usr/local/sbin/…` | observes prerequisites, then starts the VM |
 | `scripts/big-red-handover-observe` | `/usr/local/bin/…` | read-only handover observation |
 | `systemd/big-red-windows-mode.service` | `/etc/systemd/system/…` | runs the starter on a Windows boot only |
+| `scripts/big-red-wait-for-tailnet` | `/usr/local/sbin/…` | waits for a Tailscale address, not just the daemon |
+| `systemd/big-red-windows-moonlight-forward.service.d/wait-for-tailnet.conf` | `/etc/systemd/system/…` | drop-in that makes Sunshine forwarding wait for that address |
 
 Install or re-verify with:
 
@@ -79,6 +81,19 @@ mode has nothing left to arrange at the last moment.
 `systemd.unit=multi-user.target` is what keeps GDM inactive, rather than disabling
 `gdm.service`. It is scoped to the single boot that asked for it, so the default boot
 needs no repair, and the enablement state of GDM is never touched.
+
+### Why Sunshine forwarding needed a drop-in
+
+`big-red-windows-moonlight-forward.service` builds its nftables table from Big
+Red's Tailscale IPv4, and it is ordered `After=tailscaled.service`. That orders it
+after the daemon, not after the address. A Linux boot spends about 30s in userspace
+and never lost that race; the Windows boot reaches `multi-user.target` in about 17s
+and lost it immediately, failing with `no current Tailscale IPs; state: NoState`
+about 4s into boot.
+
+The drop-in adds an `ExecStartPre` that waits for `tailscale ip -4` to answer. It
+changes nothing about the forwarding rules, and removing the drop-in restores the
+previous behaviour exactly.
 
 ## Using it
 

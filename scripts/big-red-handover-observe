@@ -168,7 +168,7 @@ def observe_graphical():
         'gdm_enabled': enabled or UNAVAILABLE,
         'gdm_confirmed_inactive': gdm['returncode'] == 3 and gdm['is_active'] == 'inactive',
         'seated_sessions': sessions,
-        'gnome_remote_desktop': unit_state('big-red-windows-moonlight-forward.service'),
+        'moonlight_forward': unit_state('big-red-windows-moonlight-forward.service'),
     }
 
 
@@ -275,7 +275,7 @@ def render(report):
         f"  gdm.service           {graphical['gdm']['is_active']} (is-active rc {graphical['gdm']['returncode']}), {graphical['gdm_enabled']}",
         f"  guard sees it as      {gdm_seen}",
         f"  seated sessions       {seated or '(none)'}",
-        f"  moonlight forward     {graphical['gnome_remote_desktop']['is_active']}",
+        f"  moonlight forward     {graphical['moonlight_forward']['is_active']}",
         '',
         'WINDOWS VM',
         f"  domain                {vm['domain']}",

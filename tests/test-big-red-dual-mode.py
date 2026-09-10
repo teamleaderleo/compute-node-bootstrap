@@ -429,5 +429,54 @@ class InstalledConfigurationTest(unittest.TestCase):
         self.assertIn('/usr/local/sbin/big-red-vm-gpu-guard', hook)
 
 
+class TailnetWaitTest(unittest.TestCase):
+    """The helper must wait for an address, and give up rather than hang."""
+
+    def run_helper(self, script_body, seconds='2'):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(lambda: subprocess.run(['rm', '-rf', tmp], check=False))
+        stub = pathlib.Path(tmp) / 'tailscale'
+        stub.write_text(script_body)
+        stub.chmod(0o755)
+        source = (ROOT / 'scripts/big-red-wait-for-tailnet').read_text()
+        source = source.replace('/usr/bin/tailscale', str(stub))
+        return subprocess.run(['bash', '-c', source, 'helper', seconds],
+                              capture_output=True, text=True, check=False)
+
+    def test_returns_as_soon_as_an_address_exists(self):
+        result = self.run_helper('#!/bin/sh\necho 100.105.182.87\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('100.105.182.87', result.stdout)
+
+    def test_waits_through_an_address_that_arrives_late(self):
+        counter = pathlib.Path(tempfile.mkdtemp()) / 'n'
+        self.addCleanup(lambda: subprocess.run(['rm', '-rf', str(counter.parent)], check=False))
+        result = self.run_helper(
+            '#!/bin/sh\n'
+            f'n=$(cat {counter} 2>/dev/null || echo 0); n=$((n+1)); echo $n > {counter}\n'
+            '[ "$n" -lt 2 ] && exit 1\n'
+            'echo 100.105.182.87\n', seconds='10')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('100.105.182.87', result.stdout)
+
+    def test_gives_up_instead_of_blocking_the_boot_forever(self):
+        result = self.run_helper('#!/bin/sh\nexit 1\n', seconds='1')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('No Tailscale IPv4', result.stderr)
+
+    def test_empty_output_is_not_treated_as_an_address(self):
+        result = self.run_helper('#!/bin/sh\necho ""\n', seconds='1')
+        self.assertEqual(result.returncode, 1)
+
+
+class MoonlightDropInTest(unittest.TestCase):
+    def test_dropin_waits_for_the_address_without_changing_the_rules(self):
+        text = (ROOT / 'systemd/big-red-windows-moonlight-forward.service.d'
+                       '/wait-for-tailnet.conf').read_text()
+        self.assertIn('ExecStartPre=/usr/local/sbin/big-red-wait-for-tailnet', text)
+        self.assertNotIn('ExecStart=', text.replace('ExecStartPre=', ''))
+        self.assertIn('TimeoutStartSec=', text)
+
+
 if __name__ == '__main__':
     unittest.main()
