@@ -1,0 +1,35 @@
+#!/usr/bin/python3
+"""Read-only prerequisite for handing an already-detached GPU to the VM."""
+import pathlib
+import subprocess
+import sys
+
+GPU = pathlib.Path('/sys/bus/pci/devices/0000:00:02.0')
+
+
+def check(gpu=GPU, run=subprocess.run):
+    try:
+        driver = (gpu / 'driver').resolve(strict=True).name
+    except OSError:
+        raise RuntimeError('GPU driver ownership is unavailable; refusing VM start')
+    if driver != 'vfio-pci':
+        raise RuntimeError(
+            f'GPU 0000:00:02.0 belongs to {driver}; refusing automatic detach. '
+            'Linux must release the GPU through a separate verified handover first.')
+    result = run(['/usr/bin/systemctl', 'is-active', 'gdm.service'],
+                 capture_output=True, text=True, timeout=5, check=False)
+    if result.returncode != 3 or result.stdout.strip() != 'inactive':
+        raise RuntimeError('GDM is not confirmed inactive; refusing VM start')
+
+
+def main():
+    try:
+        check()
+    except (RuntimeError, OSError, subprocess.SubprocessError) as error:
+        print(f'Big Red GPU guard: {error}', file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

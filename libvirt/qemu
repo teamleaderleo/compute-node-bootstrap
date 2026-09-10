@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+
+# Give win11-starsector exclusive use of the six performance cores while it
+# runs. Linux and the VM continue sharing the ten efficiency cores.
+
+vm_name=${1:-}
+operation=${2:-}
+suboperation=${3:-}
+
+[[ $vm_name == win11-starsector ]] || exit 0
+
+# Run before CPU changes and before libvirt's managed PCI detachment.
+# Never call libvirt from a hook (the daemon is waiting for this process).
+case "$operation/$suboperation" in
+  prepare/begin|start/begin|restore/begin|migrate/begin)
+    /usr/local/sbin/big-red-vm-gpu-guard || exit 1
+    ;;
+esac
+
+set_cpus() {
+  local unit=$1
+  local cpus=$2
+
+  if ! systemctl set-property --runtime "$unit" "AllowedCPUs=$cpus"; then
+    logger -t win11-starsector-cpu "Could not set $unit AllowedCPUs=$cpus"
+  fi
+}
+
+case "$operation/$suboperation" in
+  prepare/begin)
+    # Keep the VM's slice unrestricted, then move ordinary host work away
+    # from CPUs 0-5 before QEMU creates its pinned vCPU threads.
+    set_cpus machine.slice 0-15
+    set_cpus system.slice 6-15
+    set_cpus user.slice 6-15
+    logger -t win11-starsector-cpu \
+      'Reserved performance CPUs 0-5 for win11-starsector; sharing CPUs 6-15'
+    ;;
+  release/end)
+    # An empty AllowedCPUs value restores the parent cgroup's full CPU set.
+    set_cpus system.slice ''
+    set_cpus user.slice ''
+    set_cpus machine.slice ''
+    logger -t win11-starsector-cpu 'Returned CPUs 0-15 to Linux'
+    ;;
+esac
+
+exit 0
