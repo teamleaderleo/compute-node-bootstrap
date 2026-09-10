@@ -12,6 +12,13 @@ later a `JS Helper` exit faulted in `drm_framebuffer_cleanup` on kernel
 [PR #40's guard](BIG_RED_WINDOWS_MOONLIGHT.md#gpu-start-guard) refuses that path;
 this document is the supported way to satisfy the guard instead of bypassing it.
 
+> **Passthrough is optional.** It was explored to see whether the GPU was a
+> bottleneck; it is not, so nothing depends on Windows mode. It is kept because it
+> is inert unless explicitly armed and because it is the only safe way to do a
+> thing that was previously done by unbinding a live GPU. Removing the `<hostdev>`
+> from the `win11-starsector` domain would retire the question entirely and let the
+> VM run alongside the desktop with no reboot.
+
 > **Windows mode works; the Wi-Fi adapter is what makes this machine hard to
 > reach.** Both Windows/VFIO boots tested handed the GPU over correctly and ran
 > the VM. The boot that appeared to "lose the host" was healthy the whole time --
