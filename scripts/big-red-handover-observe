@@ -1,0 +1,308 @@
+#!/usr/bin/python3
+"""Report what Big Red's GPU handover currently looks like.
+
+Observation only. Every command and file here is read-only: nothing binds,
+unbinds, starts, stops, or reboots anything. Run it before and after a mode
+switch to see whether the prerequisites the VM guard enforces are actually met.
+"""
+import argparse
+import json
+import os
+import pathlib
+import re
+import subprocess
+import sys
+
+GPU = '0000:00:02.0'
+GPU_PATH = pathlib.Path('/sys/bus/pci/devices') / GPU
+CMDLINE = pathlib.Path('/proc/cmdline')
+GRUBENV = pathlib.Path('/boot/grub/grubenv')
+WINDOWS_ENTRY = 'big-red-windows-vfio'
+UNAVAILABLE = 'unavailable'
+
+
+def read(path):
+    """Return a stripped file's text, or None when it cannot be read."""
+    try:
+        return path.read_text().strip()
+    except OSError:
+        return None
+
+
+def run(argv, timeout=10):
+    """Run a read-only command and return (returncode, stdout, stderr)."""
+    try:
+        result = subprocess.run(argv, capture_output=True, text=True,
+                                timeout=timeout, check=False)
+    except (OSError, subprocess.SubprocessError) as error:
+        return None, '', str(error)
+    return result.returncode, result.stdout.strip(), result.stderr.strip()
+
+
+def unit_state(unit):
+    """Report a unit as systemd's is-active pair, matching the VM guard."""
+    code, out, _ = run(['/usr/bin/systemctl', 'is-active', unit])
+    return {'unit': unit, 'is_active': out or UNAVAILABLE, 'returncode': code}
+
+
+def observe_boot_mode():
+    cmdline = read(CMDLINE) or ''
+    words = cmdline.split()
+    grubenv = read(GRUBENV)
+    if grubenv is None:
+        armed = UNAVAILABLE
+    else:
+        match = re.search(r'^next_entry=(.*)$', grubenv, re.MULTILINE)
+        armed = match.group(1).strip() if match else None
+    return {
+        'kernel': os.uname().release,
+        'declared_mode': next(
+            (w.split('=', 1)[1] for w in words if w.startswith('bigred.mode=')),
+            'linux (no bigred.mode= on the command line)'),
+        'systemd_unit_argument': next(
+            (w.split('=', 1)[1] for w in words if w.startswith('systemd.unit=')),
+            None),
+        'vfio_pci_ids': next(
+            (w.split('=', 1)[1] for w in words if w.startswith('vfio-pci.ids=')), None),
+        'modprobe_blacklist': next(
+            (w.split('=', 1)[1] for w in words if w.startswith('modprobe.blacklist=')), None),
+        'early_vfio_load': 'rd.driver.pre=vfio_pci' in words,
+        'sysfb_blacklisted': 'initcall_blacklist=sysfb_init' in words,
+        'iommu': [w for w in words if w.startswith(('intel_iommu=', 'iommu='))],
+        'armed_next_boot': armed,
+        'armed_next_boot_is_windows': armed == WINDOWS_ENTRY,
+        'cmdline': cmdline,
+    }
+
+
+def observe_gpu():
+    driver_link = GPU_PATH / 'driver'
+    try:
+        driver = driver_link.resolve(strict=True).name
+    except OSError:
+        driver = None
+    return {
+        'address': GPU,
+        'driver': driver,
+        'driver_override': read(GPU_PATH / 'driver_override') or None,
+        'modalias': read(GPU_PATH / 'modalias'),
+        'boot_vga': read(GPU_PATH / 'boot_vga'),
+        'owned_by_linux': driver in ('i915', 'xe'),
+        'owned_by_vfio': driver == 'vfio-pci',
+    }
+
+
+def observe_iommu():
+    group_link = GPU_PATH / 'iommu_group'
+    try:
+        group = group_link.resolve(strict=True)
+    except OSError:
+        return {'group': None, 'members': [], 'gpu_is_alone': None}
+    try:
+        members = sorted(p.name for p in (group / 'devices').iterdir())
+    except OSError:
+        members = []
+    return {
+        'group': group.name,
+        'members': members,
+        'gpu_is_alone': members == [GPU],
+    }
+
+
+def observe_drm_users():
+    """List the GPU's DRM nodes and the processes holding them open."""
+    try:
+        nodes = sorted(p.name for p in (GPU_PATH / 'drm').iterdir())
+    except OSError:
+        nodes = []
+    wanted = {f'/dev/dri/{name}' for name in nodes}
+    users, unreadable = [], 0
+    try:
+        processes = list(pathlib.Path('/proc').iterdir())
+    except OSError:
+        processes = []
+    for proc in processes:
+        if not proc.name.isdigit():
+            continue
+        try:
+            entries = list((proc / 'fd').iterdir())
+        except PermissionError:
+            unreadable += 1
+            continue
+        except OSError:
+            continue
+        for entry in entries:
+            try:
+                target = os.readlink(entry)
+            except OSError:
+                continue
+            if target in wanted:
+                users.append({
+                    'pid': int(proc.name),
+                    'command': read(proc / 'comm'),
+                    'node': target,
+                })
+                break
+    return {
+        'nodes': nodes,
+        'users': sorted(users, key=lambda u: u['pid']),
+        'processes_not_inspectable': unreadable,
+        'complete': unreadable == 0,
+    }
+
+
+def observe_graphical():
+    code, out, _ = run(['/usr/bin/systemctl', 'get-default'])
+    sessions = []
+    code_s, out_s, _ = run(['/usr/bin/loginctl', 'list-sessions', '--no-legend'])
+    if code_s == 0:
+        for line in out_s.splitlines():
+            fields = line.split()
+            if len(fields) >= 5 and fields[3] != '-':
+                sessions.append({'session': fields[0], 'user': fields[2], 'seat': fields[3]})
+    gdm = unit_state('gdm.service')
+    enabled = run(['/usr/bin/systemctl', 'is-enabled', 'gdm.service'])[1]
+    return {
+        'default_target': out if code == 0 else UNAVAILABLE,
+        'gdm': gdm,
+        'gdm_enabled': enabled or UNAVAILABLE,
+        'gdm_confirmed_inactive': gdm['returncode'] == 3 and gdm['is_active'] == 'inactive',
+        'seated_sessions': sessions,
+        'moonlight_forward': unit_state('big-red-windows-moonlight-forward.service'),
+    }
+
+
+def observe_vm(domain):
+    code, out, err = run(['/usr/bin/virsh', '--connect', 'qemu:///system', 'domstate', domain])
+    state = out if code == 0 else f'{UNAVAILABLE} ({err or "no answer"})'
+    guard = pathlib.Path('/usr/local/sbin/big-red-vm-gpu-guard')
+    hook = pathlib.Path('/etc/libvirt/hooks/qemu')
+    hook_text = read(hook) if os.access(hook, os.R_OK) else None
+    return {
+        'domain': domain,
+        'state': state,
+        'shut_off': out == 'shut off',
+        'guard_installed': guard.is_file() and os.access(guard, os.X_OK),
+        'guard_wired_into_hook': bool(hook_text and 'big-red-vm-gpu-guard' in hook_text),
+        'windows_mode_unit': unit_state('big-red-windows-mode.service'),
+    }
+
+
+def observe_recovery():
+    listening = []
+    code, out, _ = run(['/usr/bin/ss', '-tlnH'])
+    if code == 0:
+        for line in out.splitlines():
+            fields = line.split()
+            if len(fields) >= 4:
+                listening.append(fields[3])
+    tailscale_ip = run(['/usr/bin/tailscale', 'ip', '-4'])[1]
+    addresses = []
+    code_a, out_a, _ = run(['/usr/sbin/ip', '-o', '-4', 'addr', 'show', 'scope', 'global'])
+    if code_a == 0:
+        for line in out_a.splitlines():
+            fields = line.split()
+            if len(fields) >= 4:
+                addresses.append(f'{fields[1]} {fields[3]}')
+    return {
+        'sshd': unit_state('ssh.service'),
+        'ssh_listening': [a for a in listening if a.endswith(':22')],
+        'tailscaled': unit_state('tailscaled.service'),
+        'tailscale_ipv4': tailscale_ip.splitlines()[0] if tailscale_ip else UNAVAILABLE,
+        'global_addresses': addresses,
+    }
+
+
+def observe(domain='win11-starsector'):
+    return {
+        'boot_mode': observe_boot_mode(),
+        'gpu': observe_gpu(),
+        'iommu': observe_iommu(),
+        'drm_users': observe_drm_users(),
+        'graphical': observe_graphical(),
+        'vm': observe_vm(domain),
+        'recovery': observe_recovery(),
+    }
+
+
+def render(report):
+    """Render the report as plain text. Reports observations, never verdicts."""
+    boot, gpu, iommu = report['boot_mode'], report['gpu'], report['iommu']
+    drm, graphical, vm, recovery = (report['drm_users'], report['graphical'],
+                                    report['vm'], report['recovery'])
+    lines = [
+        'Big Red GPU handover observation (read-only)',
+        '',
+        'BOOT MODE',
+        f"  kernel                {boot['kernel']}",
+        f"  declared mode         {boot['declared_mode']}",
+        f"  systemd.unit=         {boot['systemd_unit_argument'] or '(default target)'}",
+        f"  vfio-pci.ids=         {boot['vfio_pci_ids'] or '(absent)'}",
+        f"  modprobe.blacklist=   {boot['modprobe_blacklist'] or '(absent)'}",
+        f"  rd.driver.pre=vfio_pci {boot['early_vfio_load']}",
+        f"  sysfb_init blacklisted {boot['sysfb_blacklisted']}",
+        f"  iommu arguments       {' '.join(boot['iommu']) or '(absent)'}",
+        f"  armed for next boot   {boot['armed_next_boot'] or '(nothing armed; next boot is Linux)'}",
+        '',
+        'GPU DRIVER OWNERSHIP',
+        f"  {gpu['address']} driver  {gpu['driver'] or '(none bound)'}",
+        f"  driver_override       {gpu['driver_override'] or '(unset)'}",
+        f"  boot_vga              {gpu['boot_vga']}",
+        '',
+        'IOMMU GROUP',
+        f"  group                 {iommu['group'] or UNAVAILABLE}",
+        f"  members               {', '.join(iommu['members']) or UNAVAILABLE}",
+        f"  GPU alone in group    {iommu['gpu_is_alone']}",
+        '',
+        'DRM USERS',
+        f"  nodes                 {', '.join(drm['nodes']) or '(none; GPU exposes no DRM node)'}",
+    ]
+    if drm['users']:
+        for user in drm['users']:
+            lines.append(f"  holder                pid {user['pid']} {user['command']} -> {user['node']}")
+    else:
+        lines.append('  holder                (no process holds a DRM node of this GPU)')
+    if not drm['complete']:
+        lines.append(f"  note                  {drm['processes_not_inspectable']} processes not inspectable; re-run with sudo for a complete list")
+    seated = ', '.join('{0}:{1}@{2}'.format(s['session'], s['user'], s['seat'])
+                       for s in graphical['seated_sessions'])
+    gdm_seen = ('confirmed inactive' if graphical['gdm_confirmed_inactive']
+                else 'NOT confirmed inactive')
+    lines += [
+        '',
+        'GRAPHICAL SESSION',
+        f"  default target        {graphical['default_target']}",
+        f"  gdm.service           {graphical['gdm']['is_active']} (is-active rc {graphical['gdm']['returncode']}), {graphical['gdm_enabled']}",
+        f"  guard sees it as      {gdm_seen}",
+        f"  seated sessions       {seated or '(none)'}",
+        f"  moonlight forward     {graphical['moonlight_forward']['is_active']}",
+        '',
+        'WINDOWS VM',
+        f"  domain                {vm['domain']}",
+        f"  state                 {vm['state']}",
+        f"  PR #40 guard          {'installed' if vm['guard_installed'] else 'MISSING'}, "
+        f"{'wired into the libvirt hook' if vm['guard_wired_into_hook'] else 'NOT wired into the libvirt hook'}",
+        f"  windows-mode unit     {vm['windows_mode_unit']['is_active']}",
+        '',
+        'REMOTE RECOVERY',
+        f"  ssh.service           {recovery['sshd']['is_active']}",
+        f"  ssh listening on      {', '.join(recovery['ssh_listening']) or '(nothing)'}",
+        f"  tailscaled            {recovery['tailscaled']['is_active']}",
+        f"  tailscale IPv4        {recovery['tailscale_ipv4']}",
+        f"  global addresses      {', '.join(recovery['global_addresses']) or '(none)'}",
+    ]
+    return '\n'.join(lines)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--json', action='store_true', help='emit the raw observation as JSON')
+    parser.add_argument('--domain', default='win11-starsector', help='libvirt domain to observe')
+    args = parser.parse_args(argv)
+    report = observe(args.domain)
+    print(json.dumps(report, indent=2, sort_keys=True) if args.json else render(report))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

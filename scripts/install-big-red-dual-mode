@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+# Install Big Red's reboot-based Linux/Windows GPU dual mode.
+#
+# Default boot stays Linux on i915 with GDM. An explicit one-shot GRUB entry is
+# the only way into Windows/VFIO mode. This installer performs no live GPU
+# detachment: it edits boot configuration and units, then regenerates the
+# initramfs and the GRUB menu. Nothing takes effect until the next reboot.
+set -euo pipefail
+
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+repo=$(cd -- "$script_dir/.." && pwd)
+entry_id=big-red-windows-vfio
+domain=win11-starsector
+guard=/usr/local/sbin/big-red-vm-gpu-guard
+hook=/etc/libvirt/hooks/qemu
+grub_cfg=/boot/grub/grub.cfg
+crash_evidence=/var/crash/202609100635
+backup_root=/var/backups/big-red-dual-mode
+
+mode=apply
+case "${1:-}" in
+  --plan) mode=plan ;;
+  --verify-only) mode=verify ;;
+  '') ;;
+  *) echo "Usage: $0 [--plan|--verify-only]" >&2; exit 2 ;;
+esac
+
+# source -> destination pairs, installed with the destination's required mode.
+files=(
+  "$repo/boot/grub.d/90-preflight-arc-vfio.cfg:/etc/default/grub.d/90-preflight-arc-vfio.cfg:0644"
+  "$repo/boot/grub.d/42_big_red_windows_mode:/etc/grub.d/42_big_red_windows_mode:0755"
+  "$repo/boot/modprobe.d/90-preflight-arc-vfio.conf:/etc/modprobe.d/90-preflight-arc-vfio.conf:0644"
+  "$repo/boot/dracut.conf.d/90-preflight-arc-vfio.conf:/etc/dracut.conf.d/90-preflight-arc-vfio.conf:0644"
+  "$repo/scripts/big-red-boot-mode:/usr/local/sbin/big-red-boot-mode:0755"
+  "$repo/scripts/big-red-windows-mode-start:/usr/local/sbin/big-red-windows-mode-start:0755"
+  "$repo/scripts/big-red-handover-observe:/usr/local/bin/big-red-handover-observe:0755"
+  "$repo/systemd/big-red-windows-mode.service:/etc/systemd/system/big-red-windows-mode.service:0644"
+  "$repo/scripts/big-red-wait-for-tailnet:/usr/local/sbin/big-red-wait-for-tailnet:0755"
+  "$repo/systemd/big-red-windows-moonlight-forward.service.d/wait-for-tailnet.conf:/etc/systemd/system/big-red-windows-moonlight-forward.service.d/wait-for-tailnet.conf:0644"
+)
+
+fail() { echo "$*" >&2; exit 1; }
+
+verify_guard_intact() {
+  # PR #40's guard is a prerequisite of this work, not part of it. Refuse to
+  # proceed if it is missing or has drifted from the reviewed source.
+  [[ -x $guard ]] || fail "PR #40 guard is missing at $guard; install it first."
+  sudo -n cmp -s "$guard" "$repo/scripts/big-red-vm-gpu-guard" ||
+    fail "$guard differs from the reviewed guard; reconcile before installing."
+  sudo -n cmp -s "$hook" "$repo/libvirt/qemu" ||
+    fail "$hook differs from the reviewed hook; reconcile before installing."
+}
+
+verify_result() {
+  local default_args windows_args
+  default_args=$(sudo -n awk '/^menuentry .Ubuntu./,/^}/' "$grub_cfg" | grep -m1 -E '^[[:space:]]*linux[[:space:]]' || true)
+  windows_args=$(sudo -n awk "/--id ${entry_id}/,/^}/" "$grub_cfg" | grep -m1 -E '^[[:space:]]*linux[[:space:]]' || true)
+
+  [[ -n $windows_args ]] || fail "No $entry_id entry in $grub_cfg."
+  for required in "vfio-pci.ids=8086:7d51" "rd.driver.pre=vfio_pci" \
+                  "modprobe.blacklist=i915,xe" "initcall_blacklist=sysfb_init" \
+                  "systemd.unit=multi-user.target" "bigred.mode=windows"; do
+    [[ $windows_args == *"$required"* ]] || fail "Windows entry is missing $required."
+  done
+
+  [[ -n $default_args ]] || fail "Could not read the default entry from $grub_cfg."
+  for forbidden in "vfio-pci.ids=" "modprobe.blacklist=" "initcall_blacklist=" "bigred.mode="; do
+    [[ $default_args != *"$forbidden"* ]] ||
+      fail "The DEFAULT Linux entry still carries $forbidden; Linux would boot without a GPU."
+  done
+
+  if grep -qE '^[[:space:]]*blacklist[[:space:]]+(i915|xe)' /etc/modprobe.d/90-preflight-arc-vfio.conf; then
+    fail "modprobe.d still blacklists i915 or xe; Linux would boot without a GPU."
+  fi
+  if grep -qE '^[[:space:]]*force_drivers' /etc/dracut.conf.d/90-preflight-arc-vfio.conf; then
+    fail "dracut still force-loads vfio_pci on every boot."
+  fi
+
+  local dropin=/etc/systemd/system/big-red-windows-moonlight-forward.service.d/wait-for-tailnet.conf
+  if [[ -e /etc/systemd/system/big-red-windows-moonlight-forward.service ]]; then
+    sudo -n test -e "$dropin" ||
+      fail "Sunshine forwarding has no wait-for-tailnet drop-in; it will lose the boot race."
+  fi
+
+  [[ -d $crash_evidence ]] || fail "Crash evidence $crash_evidence is gone."
+
+  echo "Verified: default entry is a clean Linux boot, $entry_id carries the VFIO arguments,"
+  echo "PR #40 guard is intact, and $crash_evidence is preserved."
+}
+
+if [[ $mode == verify ]]; then
+  verify_guard_intact
+  verify_result
+  exit 0
+fi
+
+verify_guard_intact
+
+running=$(sudo -n virsh -c qemu:///system list --name | tr -d '[:space:]')
+[[ -z $running ]] || fail "Stop running VMs first; $running is up."
+state=$(sudo -n virsh -c qemu:///system domstate "$domain")
+[[ $state == "shut off" ]] || fail "$domain is '$state', not shut off."
+
+if [[ $mode == plan ]]; then
+  echo "Would install:"
+  for entry in "${files[@]}"; do
+    IFS=: read -r source destination file_mode <<<"$entry"
+    if sudo -n cmp -s "$source" "$destination" 2>/dev/null; then
+      echo "  unchanged  $destination"
+    else
+      echo "  install    $destination (mode $file_mode)"
+      sudo -n diff -u "$destination" "$source" 2>/dev/null | sed 's/^/      /' || true
+    fi
+  done
+  echo "Would then: set-default graphical.target, enable big-red-windows-mode.service,"
+  echo "            update-initramfs -u -k all, update-grub, and re-verify."
+  exit 0
+fi
+
+timestamp=$(date -u +%Y%m%dT%H%M%SZ)
+backup="$backup_root/$timestamp"
+sudo -n install -o root -g root -m 0700 -d "$backup"
+echo "Backing up replaced files to $backup"
+for entry in "${files[@]}"; do
+  IFS=: read -r source destination file_mode <<<"$entry"
+  if sudo -n test -e "$destination"; then
+    sudo -n install -o root -g root -m 0600 -D "$destination" "$backup/${destination//\//_}"
+  fi
+  sudo -n install -o root -g root -m "$file_mode" -D "$source" "$destination"
+done
+
+# Restore the graphical default that the September 3 VFIO experiment turned off.
+sudo -n systemctl set-default graphical.target
+if ! sudo -n test -e /etc/systemd/system/display-manager.service; then
+  echo "Warning: /etc/systemd/system/display-manager.service is missing; GDM will not" >&2
+  echo "start on the next Linux boot. Run: sudo dpkg-reconfigure gdm3" >&2
+fi
+sudo -n systemctl daemon-reload
+sudo -n systemctl enable big-red-windows-mode.service
+
+echo "Regenerating the initramfs and the GRUB menu (nothing takes effect until reboot)."
+sudo -n update-initramfs -u -k all
+sudo -n update-grub
+
+verify_result
+echo
+echo "Installed. The next ordinary boot is Linux on i915 with GDM."
+echo "For one Windows boot: sudo big-red-boot-mode windows --reboot"
+echo "To look without changing anything: big-red-handover-observe"

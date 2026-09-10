@@ -1,0 +1,22 @@
+[Unit]
+Description=Start win11-starsector after an explicit Windows/VFIO boot
+Documentation=https://github.com/teamleaderleo/compute-node-bootstrap/blob/main/docs/BIG_RED_DUAL_MODE.md
+# Only an explicit Windows boot reaches this unit. A default Linux boot, a
+# recovery boot, and a failed Windows boot all leave the condition unmet, and
+# systemd skips the unit without failing the boot.
+ConditionKernelCommandLine=bigred.mode=windows
+# Ordering only. A refusal here must never hold up the rest of multi-user.target,
+# because SSH and Tailscale are how the operator gets back out of Windows mode.
+After=libvirtd.service tailscaled.service big-red-windows-moonlight-forward.service
+Wants=libvirtd.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# A refused start exits non-zero and leaves the unit failed on purpose: that is
+# the visible signal that the handover did not happen. Nothing depends on this
+# unit, so the boot still completes and the host stays reachable.
+ExecStart=/usr/local/sbin/big-red-windows-mode-start
+
+[Install]
+WantedBy=multi-user.target

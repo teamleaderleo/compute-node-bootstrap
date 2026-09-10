@@ -1,0 +1,136 @@
+#!/usr/bin/python3
+"""Arm, clear, and report Big Red's next boot mode.
+
+Linux is always the default. `windows` arms the one-shot GRUB entry for exactly
+one boot; GRUB clears the arming as it boots, so any later reboot, panic, or
+recovery boot returns to Linux. This never binds or unbinds the GPU and never
+stops the desktop: the only way into Windows mode is a reboot.
+"""
+import argparse
+import pathlib
+import re
+import subprocess
+import sys
+
+ENTRY_ID = 'big-red-windows-vfio'
+GRUB_DIR = pathlib.Path('/boot/grub')
+GRUBENV = GRUB_DIR / 'grubenv'
+GRUB_CFG = GRUB_DIR / 'grub.cfg'
+DOMAIN = 'win11-starsector'
+GUARD = pathlib.Path('/usr/local/sbin/big-red-vm-gpu-guard')
+UNIT = 'big-red-windows-mode.service'
+
+
+def run(argv, timeout=30):
+    return subprocess.run(argv, capture_output=True, text=True, timeout=timeout, check=False)
+
+
+def armed_entry(grubenv=GRUBENV):
+    """Return the entry armed for the next boot, or None."""
+    try:
+        text = grubenv.read_text()
+    except OSError:
+        return None
+    match = re.search(r'^next_entry=(.*)$', text, re.MULTILINE)
+    entry = match.group(1).strip() if match else ''
+    return entry or None
+
+
+def preflight(grub_cfg=GRUB_CFG, guard=GUARD, run=run):
+    """Collect the reasons Windows mode must not be armed right now."""
+    problems = []
+    try:
+        if f'--id {ENTRY_ID}' not in grub_cfg.read_text():
+            problems.append(f'{grub_cfg} has no {ENTRY_ID} entry; run update-grub')
+    except OSError as error:
+        problems.append(f'cannot read {grub_cfg}: {error}')
+
+    if not guard.is_file():
+        problems.append(f'the PR #40 GPU guard is missing at {guard}')
+
+    state = run(['/usr/bin/virsh', '--connect', 'qemu:///system', 'domstate', DOMAIN])
+    if state.returncode != 0:
+        problems.append(f'cannot read {DOMAIN} state: {state.stderr.strip() or "no answer"}')
+    elif state.stdout.strip() != 'shut off':
+        problems.append(f'{DOMAIN} is {state.stdout.strip()}, not shut off')
+
+    if run(['/usr/bin/systemctl', 'is-enabled', UNIT]).stdout.strip() != 'enabled':
+        problems.append(f'{UNIT} is not enabled; the VM would not start in Windows mode')
+
+    for unit in ('ssh.service', 'tailscaled.service'):
+        if run(['/usr/bin/systemctl', 'is-active', unit]).stdout.strip() != 'active':
+            problems.append(f'{unit} is not active; the host would be unreachable after the reboot')
+
+    return problems
+
+
+def arm_windows(reboot):
+    problems = preflight()
+    if problems:
+        print('Refusing to arm Windows mode:', file=sys.stderr)
+        for problem in problems:
+            print(f'  - {problem}', file=sys.stderr)
+        return 1
+
+    result = run(['/usr/sbin/grub-reboot', ENTRY_ID])
+    if result.returncode != 0:
+        print(f'grub-reboot failed: {result.stderr.strip()}', file=sys.stderr)
+        return 1
+    if armed_entry() != ENTRY_ID:
+        print(f'grub-reboot reported success but {GRUBENV} does not name {ENTRY_ID}; '
+              'not rebooting', file=sys.stderr)
+        return 1
+
+    print(f'Armed {ENTRY_ID} for the next boot only.')
+    print('Keep an SSH session open on the recovery path; the host stays reachable in')
+    print('Windows mode, and any later reboot returns to Linux.')
+    if not reboot:
+        print('Reboot when ready, or run "big-red-boot-mode linux" to cancel.')
+        return 0
+    print('Rebooting now.')
+    result = run(['/usr/bin/systemctl', 'reboot'])
+    return 0 if result.returncode == 0 else 1
+
+
+def arm_linux():
+    result = run(['/usr/bin/grub-editenv', str(GRUBENV), 'unset', 'next_entry'])
+    if result.returncode != 0:
+        print(f'grub-editenv failed: {result.stderr.strip()}', file=sys.stderr)
+        return 1
+    remaining = armed_entry()
+    if remaining is not None:
+        print(f'{GRUBENV} still names {remaining}', file=sys.stderr)
+        return 1
+    print('Nothing is armed. The next boot uses the default Linux entry.')
+    return 0
+
+
+def status():
+    armed = armed_entry()
+    try:
+        cmdline = pathlib.Path('/proc/cmdline').read_text().split()
+    except OSError:
+        cmdline = []
+    running = next((w.split('=', 1)[1] for w in cmdline if w.startswith('bigred.mode=')), 'linux')
+    print(f'running mode      {running}')
+    print(f'next boot         {armed or "default Linux entry"}')
+    print('For the full picture run: big-red-handover-observe')
+    return 0
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('mode', nargs='?', default='status',
+                        choices=('status', 'linux', 'windows'))
+    parser.add_argument('--reboot', action='store_true',
+                        help='reboot immediately after arming Windows mode')
+    args = parser.parse_args(argv)
+    if args.mode == 'status':
+        return status()
+    if args.mode == 'linux':
+        return arm_linux()
+    return arm_windows(args.reboot)
+
+
+if __name__ == '__main__':
+    sys.exit(main())

@@ -1,0 +1,75 @@
+#!/bin/sh
+# Emit the explicit Windows/VFIO boot entry.
+#
+# This entry is never the default. `big-red-boot-mode windows` arms it for
+# exactly one boot with grub-reboot; GRUB clears the arming as it hands over to
+# the kernel, so a crash, a panic, or an ordinary `reboot` afterwards all return
+# to the default Linux entry. Nothing here changes the default entry.
+#
+# The kernel and initramfs are referenced through Ubuntu's /boot symlinks so the
+# entry keeps working across kernel upgrades without regeneration.
+set -e
+
+entry_id=big-red-windows-vfio
+gpu_ids=8086:7d51
+
+# Arguments that must exist only on this entry:
+#   vfio-pci.ids=            tells vfio-pci which device to claim
+#   rd.driver.pre=vfio_pci   loads vfio-pci from the initramfs, before i915
+#   modprobe.blacklist=      keeps i915/xe from racing for the same device
+#   initcall_blacklist=      keeps the simple framebuffer off the GPU's BARs
+#   systemd.unit=            boots to multi-user, so GDM never starts
+#   bigred.mode=windows      what big-red-windows-mode.service conditions on
+windows_arguments="vfio-pci.ids=${gpu_ids} rd.driver.pre=vfio_pci \
+modprobe.blacklist=i915,xe initcall_blacklist=sysfb_init \
+systemd.unit=multi-user.target bigred.mode=windows"
+
+if ! command -v findmnt >/dev/null 2>&1; then
+  echo "42_big_red_windows_mode: findmnt is unavailable; skipping Windows entry" >&2
+  exit 0
+fi
+
+[ -e /boot/vmlinuz ] && [ -e /boot/initrd.img ] || {
+  echo "42_big_red_windows_mode: /boot/vmlinuz or /boot/initrd.img is missing; skipping Windows entry" >&2
+  exit 0
+}
+
+boot_mount=$(findmnt --noheadings --output TARGET --target /boot) || exit 0
+boot_uuid=$(findmnt --noheadings --output UUID --target /boot) || exit 0
+root_uuid=$(findmnt --noheadings --output UUID --target /) || exit 0
+[ -n "$boot_uuid" ] && [ -n "$root_uuid" ] || exit 0
+
+# GRUB addresses the kernel relative to the filesystem the kernel lives on,
+# while the kernel still needs the root filesystem's own UUID.
+case "$boot_mount" in
+  /)     kernel_path=/boot/vmlinuz ; initrd_path=/boot/initrd.img ;;
+  /boot) kernel_path=/vmlinuz      ; initrd_path=/initrd.img      ;;
+  *)
+    echo "42_big_red_windows_mode: unexpected /boot mount '$boot_mount'; skipping Windows entry" >&2
+    exit 0
+    ;;
+esac
+
+# Reuse the default arguments (including kdump's crashkernel) but drop the
+# splash screen: an explicit handover boot should say what it is doing.
+inherited=
+for word in $GRUB_CMDLINE_LINUX_DEFAULT $GRUB_CMDLINE_LINUX; do
+  case "$word" in
+    quiet|splash) continue ;;
+  esac
+  inherited="${inherited:+$inherited }$word"
+done
+
+cat <<ENTRY
+menuentry 'Big Red: explicit Windows/VFIO boot (one-shot)' --class ubuntu --class gnu-linux --class gnu --class os --id ${entry_id} {
+	load_video
+	set gfxpayload=text
+	insmod gzio
+	insmod part_gpt
+	insmod ext2
+	search --no-floppy --fs-uuid --set=root ${boot_uuid}
+	echo 'Handing 0000:00:02.0 to vfio-pci; GDM will not start.'
+	linux	${kernel_path} root=UUID=${root_uuid} ro ${inherited} ${windows_arguments}
+	initrd	${initrd_path}
+}
+ENTRY

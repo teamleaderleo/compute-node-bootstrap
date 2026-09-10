@@ -1,0 +1,99 @@
+#!/usr/bin/python3
+"""Start the Windows VM after an explicit Windows/VFIO boot.
+
+Runs only on a boot that declared `bigred.mode=windows`. It observes the
+prerequisites and starts the domain, or reports what is missing and stops. It
+performs no detachment: it never writes driver_override, never unbinds a driver,
+never stops GDM, and never kills a graphics client. If the GPU did not come up
+on vfio-pci, the correct outcome is a refusal and a reboot back into Linux.
+
+The PR #40 libvirt hook guard re-checks GPU ownership and GDM independently at
+prepare/begin; this script does not replace it.
+"""
+import pathlib
+import subprocess
+import sys
+
+GPU = '0000:00:02.0'
+GPU_PATH = pathlib.Path('/sys/bus/pci/devices') / GPU
+CMDLINE = pathlib.Path('/proc/cmdline')
+DOMAIN = 'win11-starsector'
+
+
+def run(argv, timeout=60):
+    return subprocess.run(argv, capture_output=True, text=True, timeout=timeout, check=False)
+
+
+def unmet(gpu_path=GPU_PATH, cmdline_path=CMDLINE, run=run):
+    """Return the prerequisites that are not observably satisfied."""
+    missing = []
+
+    try:
+        words = cmdline_path.read_text().split()
+    except OSError as error:
+        return [f'cannot read {cmdline_path}: {error}']
+    if 'bigred.mode=windows' not in words:
+        missing.append('this boot did not declare bigred.mode=windows')
+
+    try:
+        driver = (gpu_path / 'driver').resolve(strict=True).name
+    except OSError:
+        missing.append(f'{GPU} has no driver bound; vfio-pci did not claim it')
+        driver = None
+    if driver is not None and driver != 'vfio-pci':
+        missing.append(f'{GPU} belongs to {driver}, not vfio-pci')
+
+    try:
+        nodes = sorted(p.name for p in (gpu_path / 'drm').iterdir())
+    except OSError:
+        nodes = []
+    if nodes:
+        missing.append(f'{GPU} still exposes DRM nodes {", ".join(nodes)}')
+
+    try:
+        group = (gpu_path / 'iommu_group').resolve(strict=True)
+        members = sorted(p.name for p in (group / 'devices').iterdir())
+    except OSError as error:
+        missing.append(f'cannot read the IOMMU group of {GPU}: {error}')
+    else:
+        if members != [GPU]:
+            missing.append(f'IOMMU group {group.name} also holds {", ".join(m for m in members if m != GPU)}')
+
+    gdm = run(['/usr/bin/systemctl', 'is-active', 'gdm.service'])
+    if gdm.returncode != 3 or gdm.stdout.strip() != 'inactive':
+        missing.append(f'gdm.service is not confirmed inactive (is-active said '
+                       f'"{gdm.stdout.strip()}", rc {gdm.returncode})')
+
+    for unit in ('ssh.service', 'tailscaled.service'):
+        if run(['/usr/bin/systemctl', 'is-active', unit]).stdout.strip() != 'active':
+            missing.append(f'{unit} is not active; the host would have no remote recovery path')
+
+    state = run(['/usr/bin/virsh', '--connect', 'qemu:///system', 'domstate', DOMAIN])
+    if state.returncode != 0:
+        missing.append(f'cannot read {DOMAIN} state: {state.stderr.strip() or "no answer"}')
+    elif state.stdout.strip() != 'shut off':
+        missing.append(f'{DOMAIN} is {state.stdout.strip()}, not shut off')
+
+    return missing
+
+
+def main():
+    missing = unmet()
+    if missing:
+        print(f'Not starting {DOMAIN}; Windows mode prerequisites are not met:', file=sys.stderr)
+        for item in missing:
+            print(f'  - {item}', file=sys.stderr)
+        print('Reboot to return to Linux. Nothing was detached or stopped.', file=sys.stderr)
+        return 1
+
+    print(f'Prerequisites observed: {GPU} on vfio-pci, GDM inactive, {DOMAIN} shut off.')
+    result = run(['/usr/bin/virsh', '--connect', 'qemu:///system', 'start', DOMAIN])
+    if result.returncode != 0:
+        print(f'virsh start refused: {result.stderr.strip()}', file=sys.stderr)
+        return 1
+    print(result.stdout.strip())
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
