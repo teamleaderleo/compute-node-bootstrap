@@ -104,7 +104,7 @@ if [[ $mode == plan ]]; then
       sudo -n diff -u "$destination" "$source" 2>/dev/null | sed 's/^/      /' || true
     fi
   done
-  echo "Would then: set-default graphical.target, enable gdm + big-red-windows-mode.service,"
+  echo "Would then: set-default graphical.target, enable big-red-windows-mode.service,"
   echo "            update-initramfs -u -k all, update-grub, and re-verify."
   exit 0
 fi
