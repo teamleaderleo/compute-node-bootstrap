@@ -12,11 +12,11 @@ later a `JS Helper` exit faulted in `drm_framebuffer_cleanup` on kernel
 [PR #40's guard](BIG_RED_WINDOWS_MOONLIGHT.md#gpu-start-guard) refuses that path;
 this document is the supported way to satisfy the guard instead of bypassing it.
 
-> **Windows mode is attended-only for now.** Of two Windows/VFIO boots tested,
-> one succeeded and one lost the host completely, requiring a physical power
-> cycle. The cause is unresolved. Do not arm Windows mode unless someone can
-> reach the machine. See [Open question](#open-question-windows-mode-is-not-yet-trustworthy).
-> The Linux default path is unaffected and was exercised four times cleanly.
+> **Windows mode works; the Wi-Fi adapter is what makes this machine hard to
+> reach.** Both Windows/VFIO boots tested handed the GPU over correctly and ran
+> the VM. The boot that appeared to "lose the host" was healthy the whole time --
+> its Wi-Fi firmware had crashed, which is a fault that hits Linux boots just as
+> often. See [What actually went wrong](#what-actually-went-wrong-in-test-5).
 
 ## The two modes
 
@@ -222,11 +222,9 @@ returned to `i915`, GDM and RDP with nothing armed.
 **Test 4, steady-state Linux reboot.** The fastest boot measured: `sshd` at 4.4s,
 desktop at 10.4s, 16.8s total.
 
-**Test 5, second Windows boot — the host did not come back.** Beryl's `hostapd`
-recorded the shutdown disassociation 12s after the reboot and **no association
-attempt afterwards**; no DHCP request, no tailnet presence, and both SSH paths dead.
-The cause is unresolved and the machine required a physical power cycle. See the
-open question below before relying on Windows mode.
+**Test 5, second Windows boot — unreachable, but not broken.** The handover
+succeeded and the VM ran for two hours; the Wi-Fi adapter firmware crashed, so the
+host had no network and needed a physical power cycle to get it back. See below.
 
 ### Zero live detachments
 
@@ -236,42 +234,68 @@ of GPU ownership happened across a reboot. `/var/crash/202609100635/` was
 fingerprinted before the work (`280474` and `771324316` bytes) and verified
 unchanged after every install.
 
-### Open question: Windows mode is not yet trustworthy
+### What actually went wrong in test 5
 
-Two of four Windows/VFIO boots were attempted; the first succeeded and the second
-lost the host entirely. Both used an identical GRUB entry, and the intervening
-Linux boot (test 4) proved the regenerated initramfs was good, so the initramfs is
-not the cause.
+The first diagnosis in this file was wrong and is corrected here. Test 5 was
+recorded as a possible hang in the passthrough device reset. It was not. The
+machine booted, ran for 2h18m, and was shut down only by a physical power cycle.
 
-The leading hypothesis is the passthrough device reset. In test 2 it was fast:
+The Windows boot itself did everything it was supposed to:
 
 ```text
-[9.143] vfio-pci 0000:00:02.0: resetting
-[9.246] vfio-pci 0000:00:02.0: reset done
+[0.760] vfio-pci 0000:00:02.0: vgaarb: deactivate vga console
+[0.760] vfio_pci: add [8086:7d51[ffffffff:ffffffff]] class 0x000000/00000000
+02:29:35  Reached target multi-user.target
+02:29:35  Prerequisites observed: 0000:00:02.0 on vfio-pci, GDM inactive, win11-starsector shut off.
+02:29:35  Domain 'win11-starsector' started
 ```
 
-A hang there would stall the boot before Wi-Fi, with no display and no console,
-which matches every observation of test 5. **This is inference from timing, not a
-demonstrated cause** — the persistent journal from that boot will settle it.
+The guest then renewed its DHCP lease every ~27 minutes until 04:20, so it was
+alive and well for two hours. GDM never started. The one-shot arming was already
+consumed. Nothing about the GPU handover failed.
 
-If it holds, none of the guards in this repository can help, because they all run in
-userspace and the hang precedes it. The fix would be a hardware watchdog: arm the
-iTCO watchdog on the Windows entry and disarm it once the host is observably
-healthy, so a stalled handover reboots itself into Linux rather than waiting for
-someone to reach the machine. That is not implemented here.
+What failed was the **Wi-Fi adapter firmware**:
 
-Until that is understood, treat an explicit Windows boot as an **attended**
-operation. The Linux-default restoration is independent of this and was exercised
-four times without incident.
+```text
+[4.551] iwlwifi 0000:00:14.3: 0x00000071 | NMI_INTERRUPT_UMAC_FATAL
+[5.706] iwlwifi 0000:00:14.3: HW error, resetting before reading
+```
 
-### A related Wi-Fi finding
+14 hardware errors and 92 fatal firmware assertions, never recovering. The host
+had no network, so both SSH paths were dead while the machine sat there working.
 
-`wpa_supplicant` intermittently cannot bring the interface up
-(`nl80211: Could not set interface 'wlp0s20f3' UP: Connection timed out`), retrying
-every ~10s and delaying the network to 99–205s while `sshd` itself is listening at
-~25s. Across the journal it appears on the boot **following** a session that
-disturbed the GPU — the 2026-09-10 crash, the manual `i915` rebind, a VFIO
-passthrough — and not on the five ordinary graphical boots before 2026-09-03. The
-Wi-Fi is CNVi sharing CSME with the GPU's MEI path, which would explain it, but only
-the correlation has been measured. Budget for it when planning a return from
-Windows mode.
+### The real availability risk: iwlwifi, not the GPU
+
+Counting `NMI_INTERRUPT_UMAC_FATAL` across every boot the journal still holds:
+
+| boot | when | mode | fatal FW errors | Wi-Fi lease |
+|---|---|---|---|---|
+| -12 … -10 | 08-31 → 09-03 | Linux | 0 | ~8s |
+| -9, -8 | 09-10 06:35 | kdump + recovery | 7, 91 | never |
+| -7, -6 | 09-11 01:13, 01:15 | Linux | 0 | ~7.6s |
+| -5 | test 1 | Linux | 82 | 205s |
+| -4 | test 2 | **Windows** | 0 | 7.2s |
+| -3 | test 3 | Linux | 79 | 98.8s |
+| -2 | test 4 | Linux | 0 | 7.5s |
+| -1 | test 5 | **Windows** | 92 | never |
+| 0 | recovery (cold boot) | Linux | 0 | 8.6s |
+
+Two things follow, and neither involves the GPU:
+
+1. **The fault is mode-independent.** It hit two Linux boots and one Windows boot,
+   and spared another Windows boot. Windows mode is 2-for-2 on handing over the GPU.
+2. **It began with the 2026-09-10 kernel crash.** Every boot before that is clean;
+   the crash-recovery boot logged 91 fatal errors and it has recurred since.
+
+From test 1 onward the failures alternate perfectly -- broken, clean, broken,
+clean, broken, clean. Six samples alternating is suggestive but not proof (about
+a 3% coincidence), and no mechanism for the alternation has been established. It
+is worth more samples, and they are cheap: repeated Linux reboots test it with no
+GPU risk at all.
+
+Recovery is also inconsistent: sometimes the adapter comes back after 99-205s,
+sometimes never. `sshd` is listening at ~4s regardless, so when the adapter dies
+the machine is healthy and simply unreachable.
+
+**This is the thing to fix before trusting remote reboots of any kind** -- and a
+watchdog would not have helped, because the host was never hung.
