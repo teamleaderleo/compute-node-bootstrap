@@ -1,0 +1,109 @@
+#!/usr/bin/python3
+"""Keep retrying the Wi-Fi adapter after NetworkManager has given up on it.
+
+Big Red's iwlwifi firmware fails to initialise on roughly half of warm reboots
+(`NMI_INTERRUPT_UMAC_FATAL`, then `Failed to start RT ucode`). Each attempt is
+independent, so retrying works -- but NetworkManager stops after five tries:
+
+    device (wlp0s20f3): supplicant interface keeps failing, giving up
+
+On 2026-09-10 that left a healthy machine, running the Windows VM, unreachable
+for 2h18m until someone power-cycled it. Attempts 1-5 had failed; nobody made a
+sixth. This makes the sixth attempt, and the seventh.
+
+Reloading the driver resets the adapter and makes NetworkManager probe it again.
+The recovery only ever runs when the host has no usable address of its own, so it
+cannot disturb a working machine.
+"""
+import argparse
+import pathlib
+import re
+import subprocess
+import sys
+
+WIFI = 'wlp0s20f3'
+# Addresses on these do not mean the host is reachable. libvirt's bridge and the
+# VM's tap exist even when the uplink is dead, and tailscale0 is an overlay: it
+# keeps its 100.x address after the transport underneath it has gone, which is
+# exactly the state this recovery has to notice.
+VIRTUAL = re.compile(r'^(virbr|vnet|docker|br-|veth|tailscale|tun|lo)')
+GIVING_UP = 'supplicant interface keeps failing, giving up'
+
+
+def run(argv, timeout=60):
+    return subprocess.run(argv, capture_output=True, text=True, timeout=timeout, check=False)
+
+
+def real_addresses(run=run):
+    """Global IPv4 addresses on interfaces that could carry remote access."""
+    result = run(['/usr/sbin/ip', '-o', '-4', 'addr', 'show', 'scope', 'global'])
+    if result.returncode != 0:
+        return []
+    found = []
+    for line in result.stdout.splitlines():
+        fields = line.split()
+        if len(fields) >= 4 and not VIRTUAL.match(fields[1]):
+            found.append(f'{fields[1]} {fields[3]}')
+    return found
+
+
+def wifi_blocked(run=run):
+    """True when the operator has deliberately turned the radio off."""
+    result = run(['/usr/sbin/rfkill', 'list', 'wifi'])
+    return 'blocked: yes' in result.stdout.lower()
+
+
+def networkmanager_gave_up(run=run):
+    result = run(['/usr/bin/journalctl', '-b', '-u', 'NetworkManager', '--no-pager', '-n', '400'])
+    return GIVING_UP in result.stdout
+
+
+def diagnose(run=run):
+    """Decide whether a reload is warranted. Returns (should_reload, reason)."""
+    addresses = real_addresses(run)
+    if addresses:
+        return False, f'host is reachable on {", ".join(addresses)}'
+    if wifi_blocked(run):
+        return False, 'the Wi-Fi radio is blocked; leaving it alone'
+    if networkmanager_gave_up(run):
+        return True, 'NetworkManager gave up on the supplicant interface'
+    return True, f'no usable address and no {WIFI} lease'
+
+
+def reload_driver(run=run):
+    """Reset the adapter. The distro's modprobe.d rule orders the removal."""
+    removed = run(['/usr/sbin/modprobe', '-r', 'iwlwifi'], timeout=120)
+    if removed.returncode != 0:
+        return False, f'could not unload iwlwifi: {removed.stderr.strip()}'
+    loaded = run(['/usr/sbin/modprobe', 'iwlwifi'], timeout=120)
+    if loaded.returncode != 0:
+        return False, f'could not load iwlwifi: {loaded.stderr.strip()}'
+    # NetworkManager has already given up on the old device; nudge it to retry.
+    run(['/usr/bin/nmcli', 'device', 'connect', WIFI], timeout=90)
+    return True, 'reloaded iwlwifi and asked NetworkManager to reconnect'
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--dry-run', action='store_true',
+                        help='report what would happen without touching the adapter')
+    args = parser.parse_args(argv)
+
+    should_reload, reason = diagnose()
+    if not should_reload:
+        print(f'No action: {reason}')
+        return 0
+    if args.dry_run:
+        print(f'Would reload the Wi-Fi driver: {reason}')
+        return 0
+
+    print(f'Recovering the Wi-Fi adapter: {reason}')
+    ok, detail = reload_driver()
+    print(detail)
+    # Exit non-zero on a failed reload so the failure is visible, but the timer
+    # keeps firing either way: the next attempt is the whole point.
+    return 0 if ok else 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

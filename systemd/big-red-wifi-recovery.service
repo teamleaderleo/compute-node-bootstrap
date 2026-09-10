@@ -1,0 +1,10 @@
+[Unit]
+Description=Retry Big Red's Wi-Fi adapter after NetworkManager gives up
+Documentation=https://github.com/teamleaderleo/compute-node-bootstrap/blob/main/docs/BIG_RED_DUAL_MODE.md
+After=NetworkManager.service
+# Deliberately no Requires/BindsTo: this must still run when the network stack
+# is the thing that is broken.
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/big-red-wifi-recovery
