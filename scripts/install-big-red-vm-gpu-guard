@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+hook=/etc/libvirt/hooks/qemu
+
+# Only adopt the inspected CPU-allocation hook. Never replace unknown operator work.
+if ! sudo -n cmp -s "$hook" "$script_dir/../libvirt/qemu.legacy" &&
+   ! sudo -n cmp -s "$hook" "$script_dir/../libvirt/qemu"; then
+  echo 'Existing qemu hook differs from the reviewed hook; reconcile it before installing.' >&2
+  exit 1
+fi
+running=$(sudo -n virsh -c qemu:///system list --name)
+if [[ -n $running ]]; then
+  echo 'Stop running VMs before installing the GPU guard.' >&2
+  exit 1
+fi
+sudo -n install -o root -g root -m 0755 "$script_dir/big-red-vm-gpu-guard" /usr/local/sbin/big-red-vm-gpu-guard
+temporary=$(sudo -n mktemp /etc/libvirt/hooks/qemu.XXXXXX)
+trap 'sudo -n rm -f -- "$temporary"' EXIT
+sudo -n install -o root -g root -m 0755 "$script_dir/../libvirt/qemu" "$temporary"
+sudo -n mv -f -- "$temporary" "$hook"
+echo 'GPU guard installed. Existing qemu hook is already registered; no daemon restart needed.'

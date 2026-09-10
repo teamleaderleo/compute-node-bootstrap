@@ -110,6 +110,42 @@ Sunshine advertises Big Red's Tailscale IPv4 as `external_ip`, so Moonlight keep
 
 ## Recovery
 
+### GPU start guard
+
+Install `scripts/install-big-red-vm-gpu-guard` from this repository while all VMs are off.
+It adopts only the reviewed legacy CPU-allocation hook (or its already-hardened version),
+preserves CPU allocation behavior, and installs root-owned files. Unknown hook changes block
+installation for reconciliation. The existing hook is already registered with libvirt.
+
+The guard runs at `prepare/begin` before managed PCI detachment, and at start/restore/migrate.
+It requires PCI `0000:00:02.0` to **already** belong to `vfio-pci` and GDM to be confirmed inactive.
+Linux ownership (`i915` or `xe`), missing ownership, active/transitioning GDM, and inspection errors
+refuse the VM start. It never stops the desktop, unbinds the GPU, kills clients, or calls libvirt
+from inside the hook. Reconnect and shutdown are left alone. This protects `winvm`, virt-manager,
+and direct libvirt starts; it is not a restriction on root manually unbinding hardware.
+
+When refused, keep Linux running. Do not bypass the guard with `nodedev-detach` or sysfs writes.
+A separate handover must first stop graphics clients and verify the device has no remaining users;
+that live handover is not automated or validated by this guard. A host booted directly into the
+existing VFIO configuration can satisfy the prerequisite without detaching a live Linux GPU.
+Do not reboot merely to bypass a refusal while relying on remote Linux desktop access.
+
+This addresses the observed 2026-09-10 handover failure: the saved kdump at
+`/var/crash/202609100635/` records `rpc-libvirtd` removing i915, followed about five seconds later
+by a `JS Helper` exit fault in `drm_framebuffer_cleanup` on kernel `7.0.0-30-generic`.
+Preserve that dump; the guard prevents this implicit-detach path but does not fix the kernel.
+See [libvirt hook semantics](https://libvirt.org/hooks.html) for the pre-start failure contract.
+
+Verify without switching GPUs: `sudo /usr/local/sbin/big-red-vm-gpu-guard` must refuse while
+i915 owns the GPU. Unit/dispatch tests: `python3 tests/test-big-red-vm-gpu-guard.py`.
+
+Native installation verification on 2026-09-10: installed hook/helper bytes matched the reviewed
+source. Both the read-only helper and a real `virsh -c qemu:///system start win11-starsector`
+returned status 1 with the i915-ownership refusal. Libvirt reported failure at `prepare/begin`.
+Afterward the GPU still belonged to i915, GDM was active, the VM was shut off, and system/user
+CPU restrictions were empty. All five tests passed on macOS and Big Red. No live VFIO handover
+or successful Windows boot was attempted; the permitted VFIO branch has fixture coverage only.
+
 If the tile is offline, check in order:
 
 1. `virsh domstate win11-starsector` on the Ubuntu host;
