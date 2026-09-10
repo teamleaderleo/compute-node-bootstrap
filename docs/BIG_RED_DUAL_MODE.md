@@ -56,6 +56,8 @@ persistent Windows state to forget to undo.
 | `scripts/big-red-handover-observe` | `/usr/local/bin/…` | read-only handover observation |
 | `systemd/big-red-windows-mode.service` | `/etc/systemd/system/…` | runs the starter on a Windows boot only |
 | `scripts/big-red-wait-for-tailnet` | `/usr/local/sbin/…` | waits for a Tailscale address, not just the daemon |
+| `scripts/big-red-wifi-recovery` | `/usr/local/sbin/…` | retries the Wi-Fi adapter after NetworkManager gives up |
+| `systemd/big-red-wifi-recovery.{service,timer}` | `/etc/systemd/system/…` | runs that check every 60s |
 | `systemd/big-red-windows-moonlight-forward.service.d/wait-for-tailnet.conf` | `/etc/systemd/system/…` | drop-in that makes Sunshine forwarding wait for that address |
 
 Install or re-verify with:
@@ -185,6 +187,7 @@ ssh big-red-beryl
 
 ```bash
 python3 tests/test-big-red-dual-mode.py
+python3 tests/test-big-red-wifi-recovery.py
 python3 tests/test-big-red-vm-gpu-guard.py
 ```
 
@@ -304,5 +307,35 @@ Recovery is also inconsistent: sometimes the adapter comes back after 99-205s,
 sometimes never. `sshd` is listening at ~4s regardless, so when the adapter dies
 the machine is healthy and simply unreachable.
 
-**This is the thing to fix before trusting remote reboots of any kind** -- and a
-watchdog would not have helped, because the host was never hung.
+### Why it never came back, and what now retries
+
+The firmware init is flaky, not fatal: each attempt is an independent roll.
+NetworkManager retries five times and then stops for good.
+
+```text
+02:29:32  device (wlp0s20f3): re-acquiring supplicant interface (#5).
+02:29:37  Couldn't initialize supplicant interface: Timeout was reached
+02:29:37  device (wlp0s20f3): supplicant interface keeps failing, giving up
+```
+
+In tests 1 and 3 the fifth attempt happened to succeed, which is why the network
+appeared after 205s and 98.8s. In test 5 all five failed, NetworkManager gave up
+96s into the boot, and nothing tried again for the next 2h18m. The machine was
+never hung and no watchdog would have fired -- it needed a sixth attempt.
+
+`big-red-wifi-recovery.timer` makes it. It first fires at 110s, just after
+NetworkManager would have given up, then every 60s. When the host has no global
+IPv4 of its own it reloads `iwlwifi` -- which resets the adapter and makes
+NetworkManager probe it again -- and keeps doing so until an attempt sticks.
+
+It cannot disturb a working machine. It checks reachability first and exits
+immediately if the host holds any global IPv4 on a non-virtual interface, and it
+leaves a deliberately `rfkill`-blocked radio alone. Addresses on `virbr0` and
+`vnet0` are explicitly not counted, because those were up throughout the outage
+while the uplink was dead.
+
+```bash
+big-red-wifi-recovery --dry-run   # says what it would do, touches nothing
+systemctl status big-red-wifi-recovery.timer
+journalctl -u big-red-wifi-recovery
+```

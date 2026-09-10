@@ -1,0 +1,15 @@
+[Unit]
+Description=Check every minute whether Big Red's Wi-Fi needs another attempt
+Documentation=https://github.com/teamleaderleo/compute-node-bootstrap/blob/main/docs/BIG_RED_DUAL_MODE.md
+
+[Timer]
+# NetworkManager gives up about 96s into a bad boot, so the first check lands
+# shortly after that. Then keep trying for as long as the host has no address:
+# each firmware init is an independent roll, and the machine is unreachable
+# until one succeeds.
+OnBootSec=110s
+OnUnitActiveSec=60s
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

@@ -36,6 +36,9 @@ files=(
   "$repo/scripts/big-red-handover-observe:/usr/local/bin/big-red-handover-observe:0755"
   "$repo/systemd/big-red-windows-mode.service:/etc/systemd/system/big-red-windows-mode.service:0644"
   "$repo/scripts/big-red-wait-for-tailnet:/usr/local/sbin/big-red-wait-for-tailnet:0755"
+  "$repo/scripts/big-red-wifi-recovery:/usr/local/sbin/big-red-wifi-recovery:0755"
+  "$repo/systemd/big-red-wifi-recovery.service:/etc/systemd/system/big-red-wifi-recovery.service:0644"
+  "$repo/systemd/big-red-wifi-recovery.timer:/etc/systemd/system/big-red-wifi-recovery.timer:0644"
   "$repo/systemd/big-red-windows-moonlight-forward.service.d/wait-for-tailnet.conf:/etc/systemd/system/big-red-windows-moonlight-forward.service.d/wait-for-tailnet.conf:0644"
 )
 
@@ -112,7 +115,8 @@ if [[ $mode == plan ]]; then
       sudo -n diff -u "$destination" "$source" 2>/dev/null | sed 's/^/      /' || true
     fi
   done
-  echo "Would then: set-default graphical.target, enable big-red-windows-mode.service,"
+  echo "Would then: set-default graphical.target, enable big-red-windows-mode.service and"
+  echo "            big-red-wifi-recovery.timer,"
   echo "            update-initramfs -u -k all, update-grub, and re-verify."
   exit 0
 fi
@@ -137,6 +141,7 @@ if ! sudo -n test -e /etc/systemd/system/display-manager.service; then
 fi
 sudo -n systemctl daemon-reload
 sudo -n systemctl enable big-red-windows-mode.service
+sudo -n systemctl enable --now big-red-wifi-recovery.timer
 
 echo "Regenerating the initramfs and the GRUB menu (nothing takes effect until reboot)."
 sudo -n update-initramfs -u -k all
