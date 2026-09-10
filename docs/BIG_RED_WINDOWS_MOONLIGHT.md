@@ -139,6 +139,13 @@ See [libvirt hook semantics](https://libvirt.org/hooks.html) for the pre-start f
 Verify without switching GPUs: `sudo /usr/local/sbin/big-red-vm-gpu-guard` must refuse while
 i915 owns the GPU. Unit/dispatch tests: `python3 tests/test-big-red-vm-gpu-guard.py`.
 
+Native installation verification on 2026-09-10: installed hook/helper bytes matched the reviewed
+source. Both the read-only helper and a real `virsh -c qemu:///system start win11-starsector`
+returned status 1 with the i915-ownership refusal. Libvirt reported failure at `prepare/begin`.
+Afterward the GPU still belonged to i915, GDM was active, the VM was shut off, and system/user
+CPU restrictions were empty. All five tests passed on macOS and Big Red. No live VFIO handover
+or successful Windows boot was attempted; the permitted VFIO branch has fixture coverage only.
+
 If the tile is offline, check in order:
 
 1. `virsh domstate win11-starsector` on the Ubuntu host;
