@@ -90,6 +90,27 @@ Windows App -> 127.0.0.1:13389 -> ssh big-red -> 127.0.0.1:3389
 
 The tunnel is maintained by Air Blue's `com.teamleaderleo.big-red-rdp-tunnel` LaunchAgent. The saved Windows App device is **big-red (Tailscale tunnel)**. Its credential stays in Windows App on Air Blue and is not recorded in this repository.
 
+Open and verify the saved connection without UI clicking:
+
+```bash
+scripts/connect-big-red-rdp.sh --keep-mac-awake 3600
+```
+
+The connector uses GNOME Remote Desktop's primary-desktop sharing service, runs the tunnel/server
+preflight, invokes the existing saved-device accessibility action by exact name, and verifies the
+server-side TCP session. The accessibility click needs assistive access for the invoking terminal;
+headless automation without it stops at `windows_app_saved_device_launch_failed` after the
+SSH-side staging succeeds, and the operator double-clicks the saved device instead. It does not create an ad-hoc `rdp://` connection, so Windows App reuses
+the credential attached to the saved device without showing a credential sheet. Because unattended
+auto-login does not unlock the ordinary login keyring, a user-session oneshot copies the same stable
+RDP-only credential from GNOME's private 0600 credential file into the unlocked ephemeral session
+collection before the screen-sharing daemon starts. This preserves the real desktop, top bar, dock,
+and existing GUI session without weakening the login keyring. If that persistent credential is
+absent, repair GNOME and the existing Windows App secure-store
+entry together with `scripts/connect-big-red-rdp.sh --setup-credentials`. Credential generation is
+an explicit one-time setup/repair action, not part of normal connection. This does not change the
+Linux login, SSH access, bookmark ID, or endpoint, and no credential is written to this repository.
+
 The path was verified from Air Blue on a phone hotspot while `big-red` remained on the Beryl LAN. Live video and mouse input worked. A fresh session after the media-driver installation logged successful VA-API initialization and accepted H.264 AVC444/AVC420 capabilities.
 
 Codex Remote can control Codex tasks running on `big-red`; it is separate from whole-desktop RDP. Pair it through Codex Desktop rather than treating it as a graphical recovery path.
