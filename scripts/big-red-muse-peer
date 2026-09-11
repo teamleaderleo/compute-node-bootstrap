@@ -119,7 +119,7 @@ output_path = sys.argv[8]
 with open(output_path, "rb") as stream:
     raw = stream.read()
 
-input_tokens = 0
+direct_input_tokens = 0
 output_tokens = 0
 reasoning_tokens = 0
 cache_read_tokens = 0
@@ -145,7 +145,7 @@ for line in raw.decode("utf-8", errors="replace").splitlines():
     def integer(value: object) -> int:
         return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
 
-    input_tokens += integer(tokens.get("input"))
+    direct_input_tokens += integer(tokens.get("input"))
     output_tokens += integer(tokens.get("output"))
     reasoning_tokens += integer(tokens.get("reasoning"))
     cache = tokens.get("cache")
@@ -160,7 +160,9 @@ for line in raw.decode("utf-8", errors="replace").splitlines():
         final_reason = reason
     step_count += 1
 
-total_tokens = input_tokens + output_tokens
+logical_input_tokens = direct_input_tokens + cache_read_tokens + cache_write_tokens
+emitted_output_tokens = output_tokens + reasoning_tokens
+total_tokens = logical_input_tokens + emitted_output_tokens
 receipt = {
     "schema": "big-red-muse-peer-usage/v1",
     "provider": "opencode-zen",
@@ -177,10 +179,10 @@ receipt = {
     "provider_status": final_reason,
     "usage_observed": step_count > 0,
     "step_count": step_count,
-    "input_tokens": input_tokens if step_count else None,
+    "input_tokens": logical_input_tokens if step_count else None,
     "cached_input_tokens": cache_read_tokens if step_count else None,
     "cache_creation_input_tokens": cache_write_tokens if step_count else None,
-    "output_tokens": output_tokens if step_count else None,
+    "output_tokens": emitted_output_tokens if step_count else None,
     "reasoning_tokens": reasoning_tokens if step_count else None,
     "total_tokens": total_tokens if step_count else None,
     "result_bytes": len(raw),
