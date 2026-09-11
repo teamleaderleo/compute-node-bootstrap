@@ -37,8 +37,8 @@ fi
 } > "$log.run"
 printf '%s\n' '{"type":"step_start","sessionID":"private-not-recorded","part":{"type":"step-start"}}'
 printf '%s\n' '{"type":"text","sessionID":"private-not-recorded","part":{"type":"text","text":"fake Muse result"}}'
-printf '%s\n' '{"type":"step_finish","sessionID":"private-not-recorded","part":{"type":"step-finish","reason":"tool-calls","cost":0,"tokens":{"input":1000,"output":100,"reasoning":50,"cache":{"read":970,"write":10}}}}'
-printf '%s\n' '{"type":"step_finish","sessionID":"private-not-recorded","part":{"type":"step-finish","reason":"stop","cost":0,"tokens":{"input":500,"output":25,"reasoning":5,"cache":{"read":485,"write":0}}}}'
+printf '%s\n' '{"type":"step_finish","sessionID":"private-not-recorded","part":{"type":"step-finish","reason":"tool-calls","cost":0,"tokens":{"input":100,"output":25,"reasoning":75,"cache":{"read":970,"write":10}}}}'
+printf '%s\n' '{"type":"step_finish","sessionID":"private-not-recorded","part":{"type":"step-finish","reason":"stop","cost":0,"tokens":{"input":50,"output":10,"reasoning":15,"cache":{"read":485,"write":0}}}}'
 SH
 chmod +x "$home/.local/bin/opencode"
 
@@ -68,7 +68,7 @@ grep -q 'Take ownership of this delegated coding task' "$log.run"
 
 ledger="$home/.local/state/big-red-muse-peer/usage.jsonl"
 [[ -f "$ledger" ]]
-[[ $(stat -c '%a' "$ledger") == 600 ]]
+[[ $(stat -c '%a' "$ledger" 2>/dev/null || stat -f '%Lp' "$ledger") == 600 ]]
 [[ $(wc -l < "$ledger") -eq 2 ]]
 if grep -qE 'fake Muse result|private-not-recorded|review this change' "$ledger"; then
   printf 'error: Muse usage ledger leaked delegated content\n' >&2
@@ -76,7 +76,7 @@ if grep -qE 'fake Muse result|private-not-recorded|review this change' "$ledger"
 fi
 
 summary=$($PEER usage 168)
-/usr/bin/python3 - "$summary" <<'PY'
+/usr/bin/python3 - "$summary" "$ledger" <<'PY'
 import json
 import sys
 value = json.loads(sys.argv[1])
@@ -84,13 +84,30 @@ assert value["schema"] == "big-red-muse-peer-usage-summary/v1"
 assert value["run_count"] == 2
 assert value["billing_class"] == "contributor-free"
 assert value["actual_marginal_cost_usd"] == 0.0
-assert value["input_tokens"] == 3000
+assert value["input_tokens"] == 3230
 assert value["cached_input_tokens"] == 2910
 assert value["cache_creation_input_tokens"] == 20
 assert value["output_tokens"] == 250
-assert value["reasoning_tokens"] == 110
-assert value["total_tokens"] == 3250
+assert value["reasoning_tokens"] == 180
+assert value["total_tokens"] == 3480
 assert value["reported_cost_usd"] == 0.0
+assert value["cached_input_tokens"] <= value["input_tokens"]
+assert value["reasoning_tokens"] <= value["output_tokens"]
+assert value["total_tokens"] == value["input_tokens"] + value["output_tokens"]
+
+with open(sys.argv[2], "r", encoding="utf-8") as stream:
+    receipts = [json.loads(line) for line in stream]
+assert len(receipts) == 2
+for receipt in receipts:
+    assert receipt["input_tokens"] == 1615
+    assert receipt["cached_input_tokens"] == 1455
+    assert receipt["cache_creation_input_tokens"] == 10
+    assert receipt["output_tokens"] == 125
+    assert receipt["reasoning_tokens"] == 90
+    assert receipt["total_tokens"] == 1740
+    assert receipt["cached_input_tokens"] <= receipt["input_tokens"]
+    assert receipt["reasoning_tokens"] <= receipt["output_tokens"]
+    assert receipt["total_tokens"] == receipt["input_tokens"] + receipt["output_tokens"]
 PY
 
 mkdir -p "$temporary/outside"
